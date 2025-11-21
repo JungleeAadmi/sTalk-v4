@@ -4,6 +4,7 @@ const { Server } = require('socket.io');
 const path = require('path');
 const fs = require('fs');
 const cors = require('cors');
+const webpush = require('web-push');
 
 const app = express();
 const server = http.createServer(app);
@@ -13,29 +14,57 @@ const io = new Server(server, {
 
 const PORT = process.env.PORT || 3000;
 const DB_FILE = path.join(__dirname, 'database.json');
+const VAPID_FILE = path.join(__dirname, 'vapid.json');
 
 // Middleware
 app.use(cors());
 app.use(express.json({ limit: '50mb' })); // Allow large image uploads
 app.use(express.static(path.join(__dirname, 'public')));
 
+// --- VAPID KEYS (Push Notifications) ---
+let vapidKeys = { publicKey: '', privateKey: '' };
+
+if (fs.existsSync(VAPID_FILE)) {
+    vapidKeys = JSON.parse(fs.readFileSync(VAPID_FILE));
+} else {
+    vapidKeys = webpush.generateVAPIDKeys();
+    fs.writeFileSync(VAPID_FILE, JSON.stringify(vapidKeys, null, 2));
+    console.log("Generated new VAPID Keys");
+}
+
+webpush.setVapidDetails(
+    'mailto:admin@stalk.local',
+    vapidKeys.publicKey,
+    vapidKeys.privateKey
+);
+
 // --- DATABASE SYSTEM ---
 let db = {
     users: [
-        // Default Admin: admin / admin
-        { id: 1, username: "admin", password: "admin", name: "System Admin", avatar: "", role: "admin", mustChangePassword: false, status: "offline" }
+        { 
+            id: 1, 
+            username: "admin", 
+            password: "admin", 
+            name: "System Admin", 
+            avatar: "", 
+            role: "admin", 
+            mustChangePassword: false, 
+            status: "offline",
+            unread: {} // Store unread counts { senderId: count }
+        }
     ],
-    chats: {}
+    chats: {},
+    subscriptions: {} // { userId: [subscriptionObject, ...] }
 };
 
-// Load DB if exists
+// Load DB
 if (fs.existsSync(DB_FILE)) {
     try {
         const data = fs.readFileSync(DB_FILE);
-        db = JSON.parse(data);
-    } catch (e) {
-        console.error("Error loading DB, starting fresh.");
-    }
+        const loaded = JSON.parse(data);
+        // Merge to ensure structure structure exists
+        db = { ...db, ...loaded };
+    } catch (e) { console.error("Error loading DB, starting fresh."); }
 }
 
 function saveDB() {
@@ -43,6 +72,25 @@ function saveDB() {
 }
 
 // --- API ROUTES ---
+
+// Get VAPID Key
+app.get('/api/push/key', (req, res) => {
+    res.json({ publicKey: vapidKeys.publicKey });
+});
+
+// Subscribe to Push
+app.post('/api/push/subscribe', (req, res) => {
+    const { userId, subscription } = req.body;
+    if (!db.subscriptions[userId]) db.subscriptions[userId] = [];
+    
+    // Add if not exists
+    const exists = db.subscriptions[userId].find(s => s.endpoint === subscription.endpoint);
+    if (!exists) {
+        db.subscriptions[userId].push(subscription);
+        saveDB();
+    }
+    res.json({ success: true });
+});
 
 // Login
 app.post('/api/login', (req, res) => {
@@ -60,7 +108,7 @@ app.post('/api/login', (req, res) => {
     }
 });
 
-// Create User (Admin only logic handled by client for simplicity, verified here)
+// Create User
 app.post('/api/users', (req, res) => {
     const { name, username, password } = req.body;
     if (db.users.find(u => u.username.toLowerCase() === username.toLowerCase())) {
@@ -69,89 +117,124 @@ app.post('/api/users', (req, res) => {
     
     const newUser = {
         id: Date.now(),
-        username,
-        password,
-        name,
-        avatar: "",
-        role: "user",
-        mustChangePassword: true, // Force PW change
-        status: "offline",
-        lastSeen: "Never"
+        username, password, name,
+        avatar: "", role: "user",
+        mustChangePassword: true,
+        status: "offline", lastSeen: "Never",
+        unread: {}
     };
     
     db.users.push(newUser);
     saveDB();
-    io.emit('users_update', db.users); // Refresh lists for everyone
+    io.emit('users_update', db.users.map(u => ({...u, password: ""}))); 
     res.json({ success: true, user: newUser });
 });
 
-// Get Users
+// Get Users (With Unread Counts)
 app.get('/api/users', (req, res) => {
-    // Return users without passwords for security
+    // Ideally we filter this per requester, but for simplicity we send safe objects
+    // The client filters 'unread' counts relevant to themselves
     const safeUsers = db.users.map(u => ({...u, password: ""}));
     res.json(safeUsers);
 });
 
-// Update User (Avatar, Password)
+// Clear Unread
+app.post('/api/chats/read', (req, res) => {
+    const { userId, senderId } = req.body;
+    const user = db.users.find(u => u.id === userId);
+    if (user && user.unread) {
+        user.unread[senderId] = 0;
+        saveDB();
+        // Notify user their unread count changed
+        // In a real app we'd send this only to the specific socket
+        io.emit('users_update', db.users.map(u => ({...u, password: ""}))); 
+    }
+    res.json({ success: true });
+});
+
+// Update User
 app.put('/api/users/:id', (req, res) => {
     const userId = parseInt(req.params.id);
     const userIdx = db.users.findIndex(u => u.id === userId);
     
     if (userIdx !== -1) {
-        // Only update allowed fields
-        if (req.body.avatar) db.users[userIdx].avatar = req.body.avatar;
+        if (req.body.avatar !== undefined) db.users[userIdx].avatar = req.body.avatar;
         if (req.body.password) {
             db.users[userIdx].password = req.body.password;
             db.users[userIdx].mustChangePassword = false;
         }
         saveDB();
-        io.emit('users_update', db.users);
+        io.emit('users_update', db.users.map(u => ({...u, password: ""})));
         res.json({ success: true });
     } else {
         res.status(404).json({ success: false });
     }
 });
 
-// Delete User (Admin)
 app.delete('/api/users/:id', (req, res) => {
     const id = parseInt(req.params.id);
     db.users = db.users.filter(u => u.id !== id);
     saveDB();
-    io.emit('users_update', db.users);
+    io.emit('users_update', db.users.map(u => ({...u, password: ""})));
     res.json({ success: true });
 });
 
-// Messages
 app.get('/api/chats/:userId', (req, res) => {
-    // In this simple model, we just return the chat object between current user and requested user
-    // Real apps would use a more complex query
-    const chatId = req.query.chatId; // Expecting a unique key for the pair
+    const chatId = req.query.chatId;
     res.json(db.chats[chatId] || []);
 });
 
+// Send Message
 app.post('/api/messages', (req, res) => {
-    const { chatId, message } = req.body;
+    const { chatId, message, recipientId } = req.body;
     if (!db.chats[chatId]) db.chats[chatId] = [];
     
-    // Add server timestamp
     message.sentAt = new Date().toISOString();
     message.status = 'sent';
     
     db.chats[chatId].push(message);
+
+    // Increment unread count for recipient
+    const recipient = db.users.find(u => u.id === recipientId);
+    if (recipient) {
+        if (!recipient.unread) recipient.unread = {};
+        recipient.unread[message.senderId] = (recipient.unread[message.senderId] || 0) + 1;
+    }
+
     saveDB();
     
-    // Real-time send
     io.to(chatId).emit('message_received', message);
+    
+    // Trigger global update to show unread count badge immediately
+    io.emit('users_update', db.users.map(u => ({...u, password: ""})));
+
+    // SEND PUSH NOTIFICATION
+    if (db.subscriptions[recipientId]) {
+        const sender = db.users.find(u => u.id === message.senderId);
+        const payload = JSON.stringify({
+            title: sender ? sender.name : 'New Message',
+            body: message.text || 'Sent a file',
+            icon: 'logo.svg',
+            url: '/'
+        });
+
+        db.subscriptions[recipientId].forEach(sub => {
+            webpush.sendNotification(sub, payload).catch(err => {
+                console.error("Push failed", err);
+                // Optionally remove dead subscription here
+            });
+        });
+    }
+
     res.json({ success: true, message });
 });
 
-// Admin Reset Password
 app.post('/api/admin/reset-password', (req, res) => {
     const { userId, newPassword } = req.body;
     const user = db.users.find(u => u.id === parseInt(userId));
     if(user) {
         user.password = newPassword;
-        user.mustChangePassword = true; // Force them to change it again
+        user.mustChangePassword = true;
         saveDB();
         res.json({success: true});
     } else {
@@ -159,29 +242,19 @@ app.post('/api/admin/reset-password', (req, res) => {
     }
 });
 
-// Clear All Chats
 app.post('/api/admin/clear-chats', (req, res) => {
     db.chats = {};
+    db.users.forEach(u => u.unread = {}); // Clear unread too
     saveDB();
     io.emit('chats_cleared');
+    io.emit('users_update', db.users.map(u => ({...u, password: ""})));
     res.json({success: true});
 });
 
-// --- SOCKET.IO LOGIC ---
 io.on('connection', (socket) => {
-    console.log('User connected:', socket.id);
-
-    socket.on('join_room', (roomId) => {
-        socket.join(roomId);
-    });
-
-    socket.on('disconnect', () => {
-        // In a real app, we'd map socket ID to user ID to set them offline
-        console.log('User disconnected');
-    });
+    socket.on('join_room', (roomId) => socket.join(roomId));
 });
 
-// Fallback
 app.get('*', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });

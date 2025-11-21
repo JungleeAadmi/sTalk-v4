@@ -1,7 +1,7 @@
 {
   "name": "stalk-pwa",
-  "version": "2.0.0",
-  "description": "sTalk Secure Chat - Real Backend",
+  "version": "2.1.0",
+  "description": "sTalk Secure Chat - Real Backend with Push",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
@@ -9,6 +9,7 @@
   "dependencies": {
     "express": "^4.18.2",
     "socket.io": "^4.7.4",
-    "cors": "^2.8.5"
+    "cors": "^2.8.5",
+    "web-push": "^3.6.0"
   }
 }

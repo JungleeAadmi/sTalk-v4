@@ -254,6 +254,48 @@
                 if (!this.chats[roomId]) this.chats[roomId] = [];
                 this.chats[roomId].push(msg);
             }
+            
+            // PUSH REGISTRATION
+            async registerPush() {
+                if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+                
+                try {
+                    // Wait for service worker to be ready
+                    const reg = await navigator.serviceWorker.ready;
+                    
+                    // Helper to convert key
+                    function urlBase64ToUint8Array(base64String) {
+                        const padding = '='.repeat((4 - base64String.length % 4) % 4);
+                        const base64 = (base64String + padding).replace(/\-/g, '+').replace(/_/g, '/');
+                        const rawData = window.atob(base64);
+                        const outputArray = new Uint8Array(rawData.length);
+                        for (let i = 0; i < rawData.length; ++i) {
+                            outputArray[i] = rawData.charCodeAt(i);
+                        }
+                        return outputArray;
+                    }
+
+                    const keyRes = await fetch('/api/push/key');
+                    const { publicKey } = await keyRes.json();
+                    
+                    const convertedKey = urlBase64ToUint8Array(publicKey);
+                    const sub = await reg.pushManager.subscribe({
+                        userVisibleOnly: true,
+                        applicationServerKey: convertedKey
+                    });
+                    
+                    await fetch('/api/push/subscribe', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ userId: this.currentUser.id, subscription: sub })
+                    });
+                    console.log("Push Registered!");
+                    alert("Notifications enabled!");
+                } catch (err) {
+                    console.error("Push Registration failed", err);
+                    alert("Failed to enable notifications: " + err.message);
+                }
+            }
         }
 
         function getChatRoomId(id1, id2) { return [id1, id2].sort().join('_'); }
@@ -278,28 +320,23 @@
         }
         
         window.addEventListener('load', async () => {
+            // Register Service Worker safely (avoids blob/preview errors)
+            if ('serviceWorker' in navigator) {
+                try {
+                    navigator.serviceWorker.register('/sw.js').catch(err => console.warn("SW Register info:", err));
+                } catch (e) { console.warn("SW skipped"); }
+            }
+            
             const isLoggedIn = await server.checkAuth();
             if (isLoggedIn) enterMainApp(server.currentUser);
         });
     </script>
 
-    <!-- ===================== VIEWS ===================== -->
-
-    <!-- 1. LOGIN -->
+    <!-- VIEWS -->
     <div id="view-login" class="fixed inset-0 z-50 bg-gray-900 flex items-center justify-center p-4">
         <div class="bg-gray-800 p-8 rounded-2xl shadow-xl w-full max-w-md text-center border border-gray-700">
-            <img src="logo.svg" class="w-24 h-24 mx-auto mb-6 rounded-[20px] shadow-lg" onerror="this.style.display='none'">
-            <div class="w-24 h-24 mx-auto mb-6 rounded-[20px] shadow-lg overflow-hidden bg-gray-900" id="fallback-logo" style="display: none;">
-                <svg width="100%" height="100%" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <rect width="512" height="512" fill="#1F2937"/>
-                    <defs><linearGradient id="grad1-i" x1="100" y1="100" x2="400" y2="400" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#8B5CF6" /><stop offset="100%" stop-color="#3B82F6" /></linearGradient></defs>
-                    <path d="M256 112C167.6 112 96 176.5 96 256C96 301.5 119.5 342.1 156.6 368.1C152.9 383.9 142.5 406.5 122.6 423.2C119.5 425.8 119.7 430.7 123.1 433C154.9 454.8 196.6 444.8 214.8 438.6C228.1 442.8 241.9 445.1 256.2 445.1C344.6 445.1 416 380.6 416 301.1C416 221.6 344.4 157.1 256 157.1V112Z" fill="url(#grad1-i)"/>
-                    <circle cx="190" cy="256" r="25" fill="white" fill-opacity="0.9"/>
-                    <circle cx="256" cy="256" r="25" fill="white" fill-opacity="0.9"/>
-                    <circle cx="322" cy="256" r="25" fill="white" fill-opacity="0.9"/>
-                </svg>
-            </div>
-            <script>document.querySelector('img[src="logo.svg"]').onerror = function() { this.style.display = 'none'; document.getElementById('fallback-logo').style.display = 'block'; };</script>
+            <img src="logo.svg" class="w-24 h-24 mx-auto mb-6 rounded-[20px] shadow-lg" onerror="this.style.display='none'; document.getElementById('fallback-logo').style.display='block'">
+            <div id="fallback-logo" class="hidden w-24 h-24 mx-auto mb-6 rounded-[20px] bg-purple-600"></div>
             <h1 class="text-2xl font-extrabold text-white mb-2">sTalk Login</h1>
             <input type="text" id="login-user" placeholder="Username" class="w-full p-4 rounded-xl bg-gray-700 text-white border-none focus:ring-2 focus:ring-purple-500 mb-3 outline-none font-semibold">
             <input type="password" id="login-pass" placeholder="Password" class="w-full p-4 rounded-xl bg-gray-700 text-white border-none focus:ring-2 focus:ring-purple-500 mb-4 outline-none font-semibold">
@@ -438,7 +475,8 @@
                     <!-- Notifications Toggle Added -->
                     <div class="flex items-center justify-between">
                         <span class="font-bold text-white">Push Notifications</span>
-                        <input type="checkbox" id="notif-toggle" class="toggle-checkbox" onclick="toggleNotifications()">
+                        <!-- Changed to button for explicit user action triggering permission prompt -->
+                        <button onclick="server.registerPush()" class="bg-purple-600 px-3 py-1 rounded text-sm font-bold hover:bg-purple-500 transition">Enable</button>
                     </div>
                 </div>
                 <div class="border-t border-gray-700 my-6"></div>
@@ -531,7 +569,7 @@
             
             // Check notification permission for toggle
             if ("Notification" in window && Notification.permission === "granted") {
-                document.getElementById('notif-toggle').checked = true;
+                // document.getElementById('notif-toggle').checked = true; // Manual toggle removed for button
             }
         }
 
@@ -594,20 +632,7 @@
         }
         
         function toggleNotifications() {
-            if (!("Notification" in window)) {
-                alert("This browser does not support desktop notification");
-            } else if (Notification.permission === "granted") {
-                // Already granted, maybe user wants to disable? 
-                // Browsers don't allow un-granting programmatically easily, usually manual.
-                alert("Notifications are enabled in browser settings.");
-            } else if (Notification.permission !== "denied") {
-                Notification.requestPermission().then((permission) => {
-                    if (permission === "granted") {
-                        new Notification("sTalk", { body: "Notifications enabled!" });
-                        document.getElementById('notif-toggle').checked = true;
-                    }
-                });
-            }
+            // Replaced by direct API call in button
         }
 
         // --- ADMIN ---
@@ -677,7 +702,6 @@
             const txt = document.getElementById('chat-header-initials');
             if(user.avatar && user.avatar.length > 10) { img.src=user.avatar; img.classList.remove('hidden'); txt.classList.add('hidden'); }
             else { img.classList.add('hidden'); txt.classList.remove('hidden'); txt.innerText = getInitials(user.name); }
-            document.getElementById('chat-header-status').innerText = user.status === 'online' ? 'Online' : `Last seen: ${user.lastSeen}`;
             
             // MOBILE SLIDE
             if(window.innerWidth < 768) document.getElementById('chat-interface').classList.remove('translate-x-full');
