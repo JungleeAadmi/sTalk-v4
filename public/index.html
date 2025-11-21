@@ -33,6 +33,19 @@
         .toggle-checkbox:checked { right: 0; border-color: var(--theme-primary); }
         .toggle-checkbox:checked + .toggle-label { background-color: var(--theme-primary); }
         .theme-swatch.selected { outline: 3px solid var(--theme-primary); outline-offset: 2px; }
+        
+        /* Fix for Header Scrolling */
+        #chat-interface {
+            height: 100vh;
+            height: 100dvh; /* Dynamic Viewport Height for Mobile Browsers */
+            display: flex;
+            flex-direction: column;
+        }
+        #messages-container {
+            flex: 1;
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+        }
     </style>
     <script>
         tailwind.config = { darkMode: 'class', theme: { extend: { fontFamily: { sans: ['Nunito', 'sans-serif'] }, colors: { primary: 'var(--theme-primary)', themeDarkBg: 'var(--theme-dark-bg)', dark: '#111827' } } } }
@@ -87,6 +100,25 @@
                 });
             }
 
+            async checkAuth() {
+                // Check for saved session
+                const storedUser = localStorage.getItem('sTalk_user');
+                if (storedUser) {
+                    try {
+                        // Verify with server (simplified check)
+                        const user = JSON.parse(storedUser);
+                        // In a real app, verify token here. For now, re-login
+                        this.currentUser = user;
+                        this.fetchUsers();
+                        return true;
+                    } catch (e) {
+                        localStorage.removeItem('sTalk_user');
+                        return false;
+                    }
+                }
+                return false;
+            }
+
             async login(username, password) {
                 try {
                     const res = await fetch('/api/login', {
@@ -98,6 +130,8 @@
                     const data = await res.json();
                     if (data.success) {
                         this.currentUser = data.user;
+                        // Persist login
+                        localStorage.setItem('sTalk_user', JSON.stringify(data.user));
                         this.fetchUsers();
                         return data.user;
                     } else {
@@ -155,6 +189,8 @@
                         body: JSON.stringify({ password: newPassword })
                     });
                     this.currentUser.mustChangePassword = false;
+                    // Update stored user object
+                    localStorage.setItem('sTalk_user', JSON.stringify(this.currentUser));
                     return await res.json();
                 } catch (error) {
                      console.error("Change password error:", error);
@@ -250,9 +286,11 @@
         
         // Audio Context
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        let soundEnabled = true;
+        let soundEnabled = localStorage.getItem('sTalk_sound') !== 'false'; // Default true
         function playNotificationSound() {
             if (!soundEnabled || audioCtx.state === 'suspended') audioCtx.resume();
+            if (!soundEnabled) return;
+            
             const t = audioCtx.currentTime;
             const o = audioCtx.createOscillator();
             const g = audioCtx.createGain();
@@ -261,6 +299,14 @@
             g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.3, t + 0.05); g.gain.exponentialRampToValueAtTime(0.001, t + 1.5);
             o.start(t); o.stop(t + 1.5);
         }
+        
+        // Auto-Login Check
+        window.addEventListener('load', async () => {
+            const isLoggedIn = await server.checkAuth();
+            if (isLoggedIn) {
+                enterMainApp(server.currentUser);
+            }
+        });
     </script>
 
     <!-- ===================== VIEWS ===================== -->
@@ -324,7 +370,8 @@
 
         <!-- CHAT -->
         <div id="chat-interface" class="flex-1 bg-gray-900 flex flex-col absolute inset-0 md:static transform translate-x-full md:translate-x-0 transition-transform duration-300 z-20">
-            <div class="bg-gray-800 p-3 border-b border-gray-700 flex items-center justify-between shadow-sm z-10">
+            <!-- Header (Fixed Height) -->
+            <div class="bg-gray-800 p-3 border-b border-gray-700 flex items-center justify-between shadow-sm z-30 flex-shrink-0 h-16">
                 <div class="flex items-center gap-3">
                     <button onclick="closeChat()" class="md:hidden text-gray-300 p-2"><i class="fas fa-arrow-left text-xl"></i></button>
                     <div id="chat-header-avatar-container" class="w-10 h-10 rounded-full bg-gray-600 overflow-hidden flex items-center justify-center text-sm font-bold">
@@ -339,22 +386,28 @@
                     <button onclick="document.getElementById('chat-menu').classList.toggle('hidden')" class="p-2 text-gray-600 dark:text-gray-300">
                         <i class="fas fa-ellipsis-v"></i>
                     </button>
-                    <div id="chat-menu" class="hidden absolute right-0 top-10 w-48 bg-white dark:bg-gray-700 rounded-lg shadow-xl py-1 border dark:border-gray-600">
+                    <div id="chat-menu" class="hidden absolute right-0 top-10 w-48 bg-white dark:bg-gray-700 rounded-lg shadow-xl py-1 border dark:border-gray-600 z-40">
                         <button onclick="deleteCurrentChat()" class="w-full text-left px-4 py-3 text-red-500 hover:bg-gray-100 dark:hover:bg-gray-600 font-medium">
                             <i class="fas fa-trash mr-2"></i> Delete Chat
                         </button>
                     </div>
                 </div>
             </div>
-            <div id="messages-container" class="flex-1 overflow-y-auto p-4 space-y-3 pb-20 bg-repeat bg-cover bg-center"></div>
-            <div id="reply-preview" class="hidden bg-gray-800 p-2 border-l-4 border-purple-500 flex justify-between items-center mx-2 rounded-t-lg">
-                <div class="pl-2 overflow-hidden">
-                    <p class="text-xs text-purple-500 font-bold">Replying to...</p>
-                    <p id="reply-text" class="text-sm text-gray-300 truncate">Message</p>
+
+            <!-- Messages (Scrollable Area) -->
+            <div id="messages-container" class="flex-1 overflow-y-auto p-4 space-y-3 pb-20 bg-repeat bg-cover bg-center scroll-smooth"></div>
+
+            <!-- Input Area (Fixed at Bottom) -->
+            <div class="bg-gray-800 p-3 flex items-end gap-2 border-t border-gray-700 flex-shrink-0 z-30">
+                <!-- Reply Preview -->
+                <div id="reply-preview" class="hidden absolute bottom-full left-0 w-full bg-gray-800 p-2 border-l-4 border-purple-500 flex justify-between items-center border-t border-gray-700">
+                    <div class="pl-2 overflow-hidden">
+                        <p class="text-xs text-purple-500 font-bold">Replying to...</p>
+                        <p id="reply-text" class="text-sm text-gray-300 truncate">Message</p>
+                    </div>
+                    <button onclick="cancelReply()" class="p-2 text-gray-500"><i class="fas fa-times"></i></button>
                 </div>
-                <button onclick="cancelReply()" class="p-2 text-gray-500"><i class="fas fa-times"></i></button>
-            </div>
-            <div class="bg-gray-800 p-3 flex items-end gap-2 border-t border-gray-700">
+
                 <button onclick="triggerFileUpload()" class="p-3 text-gray-500 hover:text-purple-500 transition-colors"><i class="fas fa-paperclip text-xl"></i></button>
                 <input type="file" id="file-input" class="hidden" multiple onchange="handleFiles(this.files)">
                 <div class="flex-1 bg-gray-700 rounded-2xl px-4 py-2 min-h-[45px] flex items-center">
@@ -422,7 +475,12 @@
                 <div class="space-y-6">
                     <div class="flex items-center justify-between">
                         <span class="font-bold text-white">Sound Effects</span>
-                        <input type="checkbox" id="sound-toggle" checked class="toggle-checkbox" onclick="soundEnabled = !soundEnabled">
+                        <input type="checkbox" id="sound-toggle" checked class="toggle-checkbox" onclick="toggleSound()">
+                    </div>
+                    <!-- Notifications Toggle Added -->
+                    <div class="flex items-center justify-between">
+                        <span class="font-bold text-white">Push Notifications</span>
+                        <input type="checkbox" id="notif-toggle" class="toggle-checkbox" onclick="toggleNotifications()">
                     </div>
                 </div>
                 <div class="border-t border-gray-700 my-6"></div>
@@ -512,6 +570,11 @@
             applyWallpaper();
             if(user.role === 'admin') document.getElementById('admin-btn').classList.remove('hidden');
             server.fetchUsers(); // Trigger load
+            
+            // Check notification permission for toggle
+            if ("Notification" in window && Notification.permission === "granted") {
+                document.getElementById('notif-toggle').checked = true;
+            }
         }
 
         function updateMyProfileUI() {
@@ -522,7 +585,10 @@
             document.getElementById('settings-avatar').innerHTML = renderAvatar(user, "w-full h-full", "text-3xl");
         }
 
-        function logout() { window.location.reload(); }
+        function logout() { 
+            localStorage.removeItem('sTalk_user');
+            window.location.reload(); 
+        }
 
         // --- ADMIN RESET ---
         let targetResetUserId = null;
@@ -561,6 +627,29 @@
         function renderAvatar(user, sizeClass, fontSize="text-base") {
             if (user.avatar && user.avatar.length > 10) return `<img src="${user.avatar}" class="${sizeClass} object-cover w-full h-full">`;
             return `<div class="${sizeClass} flex items-center justify-center ${fontSize}">${getInitials(user.name)}</div>`;
+        }
+        
+        // --- SOUND & NOTIFICATIONS ---
+        function toggleSound() {
+            soundEnabled = !soundEnabled;
+            localStorage.setItem('sTalk_sound', soundEnabled);
+        }
+        
+        function toggleNotifications() {
+            if (!("Notification" in window)) {
+                alert("This browser does not support desktop notification");
+            } else if (Notification.permission === "granted") {
+                // Already granted, maybe user wants to disable? 
+                // Browsers don't allow un-granting programmatically easily, usually manual.
+                alert("Notifications are enabled in browser settings.");
+            } else if (Notification.permission !== "denied") {
+                Notification.requestPermission().then((permission) => {
+                    if (permission === "granted") {
+                        new Notification("sTalk", { body: "Notifications enabled!" });
+                        document.getElementById('notif-toggle').checked = true;
+                    }
+                });
+            }
         }
 
         // --- ADMIN ---
