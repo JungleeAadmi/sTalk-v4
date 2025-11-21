@@ -1,0 +1,38 @@
+<svg id="refinedIcon" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" fill="none">
+                        <defs>
+                            <!-- Define the drop shadow filter -->
+                            <filter id="shadow" x="-50%" y="-50%" width="200%" height="200%">
+                                <feGaussianBlur in="SourceAlpha" stdDeviation="12" result="blur"></feGaussianBlur>
+                                <feOffset in="blur" dx="0" dy="12" result="offsetBlur"></feOffset>
+                                <feColorMatrix in="offsetBlur" type="matrix" values="0 0 0 0 0.12 0 0 0 0 0.16 0 0 0 0 0.22 0 0 0 0.25 0" result="shadowMatrix"></feColorMatrix>
+                                <feMerge>
+                                    <feMergeNode in="shadowMatrix"></feMergeNode>
+                                    <feMergeNode in="SourceGraphic"></feMergeNode>
+                                </feMerge>
+                            </filter>
+                        </defs>
+
+                        <g filter="url(#shadow)">
+                            <!-- BACK BUBBLE (Purple) -->
+                            <g id="purple-bubble">
+                                <!-- Left Half (Light Purple) -->
+                                <path d="M200 40 H120 C75.8 40 40 75.8 40 120 V200 C40 244.2 75.8 280 120 280 H200 V40 Z" fill="#A78BFA"></path>
+                                <!-- Right Half (Dark Purple + Tail) -->
+                                <path d="M200 40 H280 C324.2 40 360 75.8 360 120 V200 C360 215 355 228 347 240 L360 290 L300 280 H200 V40 Z" fill="#8B5CF6"></path>
+                            </g>
+
+                            <!-- FRONT BUBBLE (Blue) - Overlapping -->
+                            <g id="blue-bubble">
+                                <!-- Left Half (Light Blue) -->
+                                <path d="M312 172 H232 C187.8 172 152 207.8 152 252 V332 C152 376.2 187.8 412 232 412 H312 V172 Z" fill="#60A5FA"></path>
+                                <!-- Right Half (Dark Blue + Tail) -->
+                                <path d="M312 172 H392 C436.2 172 472 207.8 472 252 V332 C472 347 467 360 459 372 L472 422 L412 412 H312 V172 Z" fill="#3B82F6"></path>
+                            </g>
+
+                            <!-- DOTS (Centered in Blue Bubble) -->
+                            <circle cx="252" cy="292" r="20" fill="white" opacity="0.95"></circle>
+                            <circle cx="312" cy="292" r="20" fill="white" opacity="0.95"></circle>
+                            <circle cx="372" cy="292" r="20" fill="white" opacity="0.95"></circle>
+                        </g>
+                    </svg>  
+                    
