@@ -23,21 +23,25 @@ A Progressive Web App (PWA) 100% made by AI, no human coding involved and its pu
 
 ## 🚀 One-Line Installation
 Run this on your Ubuntu/Debian/Proxmox LXC container:
-```
-bash <(curl -sL [https://raw.githubusercontent.com/JungleeAadmi/sTalk-v4/main/install.sh](https://raw.githubusercontent.com/JungleeAadmi/sTalk-v4/main/install.sh))
 
+## note:
+ 
+Please check if you have curl and sudo installed.  
+
+```
+bash <(curl -sL https://raw.githubusercontent.com/JungleeAadmi/sTalk-v4/main/install.sh)
 ```
 🔄 UpdateUpdates the app while backing up your chats and files automatically:
 ```
-bash <(curl -sL [https://raw.githubusercontent.com/JungleeAadmi/sTalk-v4/main/update.sh](https://raw.githubusercontent.com/JungleeAadmi/sTalk-v4/main/update.sh))
+bash <(curl -sL https://raw.githubusercontent.com/JungleeAadmi/sTalk-v4/main/update.sh)
 ```
 🗑️ Uninstall
 ```
-bash <(curl -sL [https://raw.githubusercontent.com/JungleeAadmi/sTalk-v4/main/uninstall.sh](https://raw.githubusercontent.com/JungleeAadmi/sTalk-v4/main/uninstall.sh))
+bash <(curl -sL https://raw.githubusercontent.com/JungleeAadmi/sTalk-v4/main/uninstall.sh)
 ```
-☢️ Nuke (Delete All) - DO AT YOUR OWN RISK
+☢️ Nuke (Delete All) - WARNING - DO AT YOUR OWN RISK
 
 ```
-bash <(curl -sL [https://raw.githubusercontent.com/JungleeAadmi/sTalk-v4/main/nuke.sh](https://raw.githubusercontent.com/JungleeAadmi/sTalk-v4/main/nuke.sh))
+bash <(curl -sL https://raw.githubusercontent.com/JungleeAadmi/sTalk-v4/main/nuke.sh)
 
 ```
