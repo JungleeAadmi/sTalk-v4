@@ -48,6 +48,17 @@
             height: 100%;
             overflow: hidden;
             position: relative;
+            transition: transform 0.3s ease-in-out;
+        }
+
+        /* On mobile, chat interface starts off-screen */
+        @media (max-width: 768px) {
+            #chat-interface {
+                position: absolute;
+                top: 0; left: 0; width: 100%;
+                z-index: 50;
+                background-color: var(--theme-dark-bg);
+            }
         }
 
         #chat-header {
@@ -340,6 +351,7 @@
         <div id="sidebar" class="w-full md:w-80 lg:w-96 bg-gray-800 border-r border-gray-700 flex flex-col z-10">
             <div class="p-4 border-b border-gray-700 flex justify-between items-center bg-gray-800">
                 <div class="flex items-center gap-3 cursor-pointer" onclick="openSettingsModal()">
+                    <!-- ROUNDED PROFILE PIC FIX: 'rounded-full' class here -->
                     <div id="my-avatar" class="w-10 h-10 rounded-full bg-purple-900 flex items-center justify-center text-purple-300 font-bold overflow-hidden border border-gray-700"></div>
                     <h2 id="my-username" class="font-bold text-white text-lg">User</h2>
                 </div>
@@ -355,7 +367,7 @@
         </div>
 
         <!-- CHAT -->
-        <div id="chat-interface" class="flex-1 bg-gray-900 flex flex-col absolute inset-0 md:static transform translate-x-full md:translate-x-0 transition-transform duration-300 z-20">
+        <div id="chat-interface" class="transform translate-x-full md:translate-x-0 bg-gray-900 flex flex-col z-20">
             <!-- FIXED HEADER -->
             <div id="chat-header" class="bg-gray-800 p-3 border-b border-gray-700 flex items-center justify-between shadow-sm z-30 h-16">
                 <div class="flex items-center gap-3">
@@ -403,30 +415,37 @@
                 <button onclick="closeSettingsModal()" class="text-gray-500 w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-700"><i class="fas fa-times"></i></button>
             </div>
             <div class="p-6 overflow-y-auto">
-                <!-- Profile -->
+                
+                <!-- Profile Section -->
                 <div class="flex flex-col items-center mb-8">
                     <div class="relative group cursor-pointer" onclick="document.getElementById('avatar-upload').click()">
+                        <!-- ROUNDED PROFILE PIC FIX -->
                         <div id="settings-avatar" class="w-24 h-24 rounded-full bg-purple-900 flex items-center justify-center text-purple-300 text-2xl font-bold overflow-hidden border-4 border-gray-700"></div>
                     </div>
                     <h3 id="settings-name" class="mt-3 font-bold text-xl text-white">User</h3>
                     <button onclick="document.getElementById('avatar-upload').click()" class="text-purple-400 text-sm font-bold mt-1">Change Profile Photo</button>
                 </div>
-                <!-- Themes -->
+
+                <!-- Theme Section -->
                 <div class="mb-6">
                     <h4 class="font-bold text-white mb-3">Color Theme</h4>
-                    <div class="grid grid-cols-4 gap-3" id="theme-selector"></div>
+                    <div class="grid grid-cols-4 gap-3" id="theme-selector">
+                        <!-- Injected via JS -->
+                    </div>
                 </div>
-                <!-- Wallpaper -->
+
+                <!-- Custom Wallpaper Section -->
                 <div class="mb-6">
                     <h4 class="font-bold text-white mb-3">Chat Wallpaper</h4>
                     <div class="flex gap-3">
-                        <button onclick="document.getElementById('bg-upload').click()" class="flex-1 py-2 bg-gray-700 rounded-lg text-sm font-bold text-white hover:bg-gray-600">Upload</button>
-                        <button onclick="removeWallpaper()" class="px-3 py-2 bg-red-900 text-red-200 rounded-lg text-sm font-bold"><i class="fas fa-trash"></i></button>
+                        <button onclick="document.getElementById('bg-upload').click()" class="flex-1 py-2 bg-gray-700 rounded-lg text-sm font-bold text-white hover:bg-gray-600 transition">Upload Custom</button>
+                        <button onclick="removeWallpaper()" class="px-3 py-2 bg-red-900 text-red-200 rounded-lg text-sm font-bold hover:bg-red-200 transition"><i class="fas fa-trash"></i></button>
                     </div>
                     <input type="file" id="bg-upload" class="hidden" accept="image/*" onchange="saveWallpaper(this)">
                 </div>
+
                 <!-- Toggles -->
-                <div class="space-y-6 mb-6">
+                <div class="space-y-6">
                     <div class="flex items-center justify-between">
                         <span class="font-bold text-white">Sound Effects</span>
                         <input type="checkbox" id="sound-toggle" checked class="toggle-checkbox" onclick="toggleSound()">
@@ -434,53 +453,53 @@
                     <div class="flex items-center justify-between">
                         <span class="font-bold text-white">Push Notifications</span>
                         <button onclick="server.registerPush()" class="bg-purple-600 px-3 py-1 rounded text-sm font-bold hover:bg-purple-500 transition">Enable</button>
-                        <input type="checkbox" id="notif-toggle" class="hidden">
+                        <input type="checkbox" id="notif-toggle" class="toggle-checkbox hidden">
                     </div>
                 </div>
+
                 <div class="border-t border-gray-700 my-6"></div>
+
+                <!-- Actions -->
                 <div class="space-y-3">
-                    <button onclick="openChangePwModal()" class="w-full p-3 rounded-xl bg-gray-700 text-left font-bold text-white">Change Password</button>
-                    <button onclick="logout()" class="w-full p-3 rounded-xl bg-red-900 text-red-200 text-left font-bold">Log Out</button>
+                    <button onclick="openChangePwModal()" class="w-full p-3 rounded-xl bg-gray-700 text-left font-bold text-white flex justify-between items-center">
+                        Change Password
+                    </button>
+                    <button onclick="logout()" class="w-full p-3 rounded-xl bg-red-900 text-red-200 text-left font-bold flex justify-between items-center">
+                        Log Out
+                    </button>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- ADMIN RESET MODAL -->
-    <div id="admin-pw-reset-modal" class="hidden fixed inset-0 z-[60] bg-black/80 flex items-center justify-center p-4">
-        <div class="bg-gray-800 p-6 rounded-2xl shadow-xl w-full max-w-sm border border-gray-700">
-            <h3 class="font-bold text-lg mb-4 text-white">Reset User Password</h3>
-            <p class="text-sm text-gray-400 mb-4">Enter a new temporary password (4-8 chars).</p>
-            <input type="text" id="admin-new-pw" placeholder="Temp Password" class="w-full p-3 mb-4 rounded-lg bg-gray-700 text-white outline-none">
+    <!-- CHANGE PASSWORD MODAL -->
+    <div id="change-pw-modal" class="hidden fixed inset-0 z-[60] bg-black/50 flex items-center justify-center p-4">
+        <div class="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-xl w-full max-w-sm">
+            <h3 class="font-bold text-lg mb-4 dark:text-white">Change Password</h3>
+            <input type="password" id="cp-new" placeholder="New Password" class="w-full p-3 mb-3 rounded-lg bg-gray-100 dark:bg-gray-700 dark:text-white outline-none font-semibold">
             <div class="flex gap-3">
-                <button onclick="document.getElementById('admin-pw-reset-modal').classList.add('hidden')" class="flex-1 py-2 bg-gray-700 text-white rounded-lg font-bold">Cancel</button>
-                <button onclick="confirmAdminReset()" class="flex-1 py-2 bg-red-600 text-white rounded-lg font-bold">Reset</button>
+                <button onclick="document.getElementById('change-pw-modal').classList.add('hidden')" class="flex-1 py-2 bg-gray-200 dark:bg-gray-700 rounded-lg dark:text-white font-semibold">Cancel</button>
+                <button onclick="saveNewPassword()" class="flex-1 py-2 bg-primary text-white rounded-lg font-bold">Save</button>
             </div>
         </div>
     </div>
 
-    <!-- USER CHANGE PW MODAL -->
-    <div id="change-pw-modal" class="hidden fixed inset-0 z-[60] bg-black/80 flex items-center justify-center p-4">
-        <div class="bg-gray-800 p-6 rounded-2xl shadow-xl w-full max-w-sm border border-gray-700">
-            <h3 class="font-bold text-lg mb-4 text-white">Change Password</h3>
-            <input type="password" id="cp-new" placeholder="New Password" class="w-full p-3 mb-3 rounded-lg bg-gray-700 text-white outline-none">
-            <button onclick="saveNewPassword()" class="w-full py-2 bg-purple-600 text-white rounded-lg font-bold">Save</button>
-        </div>
-    </div>
-
-    <!-- CROPPER MODAL -->
+    <!-- CROPPER MODAL (Reused for logic) -->
     <div id="cropper-modal" class="hidden fixed inset-0 z-[70] bg-black/90 flex items-center justify-center p-4">
-        <div class="bg-white dark:bg-gray-800 w-full max-w-lg rounded-2xl overflow-hidden">
-            <div class="p-4 border-b border-gray-700 flex justify-between"><h3 class="text-white font-bold">Adjust Photo</h3><button onclick="closeCropper()" class="text-white"><i class="fas fa-times"></i></button></div>
+        <div class="bg-white dark:bg-gray-800 w-full max-w-lg rounded-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            <div class="p-4 flex justify-between items-center border-b dark:border-gray-700">
+                <h3 class="text-white font-bold">Adjust Photo</h3>
+                <button onclick="closeCropper()" class="text-white"><i class="fas fa-times"></i></button>
+            </div>
             <div class="p-4">
-                <div class="relative w-full h-64 bg-black rounded-lg overflow-hidden" id="crop-container" 
-                     ontouchstart="startDrag(event)" ontouchmove="drag(event)" ontouchend="endDrag()" 
-                     onmousedown="startDrag(event)" onmousemove="drag(event)" onmouseup="endDrag()">
-                    <canvas id="crop-canvas" class="absolute top-0 left-0"></canvas>
-                    <div class="absolute inset-0 pointer-events-none border-[50px] border-black/60 rounded-full"></div>
+                <div class="relative w-full h-64 bg-black overflow-hidden rounded-lg" id="crop-container"
+                        ontouchstart="startDrag(event)" ontouchmove="drag(event)" ontouchend="endDrag()"
+                        onmousedown="startDrag(event)" onmousemove="drag(event)" onmouseup="endDrag()">
+                    <canvas id="crop-canvas" class="absolute top-0 left-0 origin-top-left"></canvas>
+                    <div class="absolute inset-0 pointer-events-none border-[50px] border-black/60 rounded-full" style="box-shadow: 0 0 0 999px rgba(0,0,0,0.6);"></div>
                 </div>
                 <input type="range" id="zoom-slider" min="0.5" max="3" step="0.1" value="1" class="w-full mt-4" oninput="updateZoom(this.value)">
-                <button onclick="saveCrop()" class="w-full mt-4 bg-purple-600 text-white py-3 rounded-lg font-bold">Save</button>
+                <button onclick="saveCrop()" class="w-full mt-4 bg-primary text-white py-3 rounded-lg font-bold">Save Photo</button>
             </div>
         </div>
     </div>
@@ -494,35 +513,36 @@
                 <a id="download-btn" href="#" download class="text-white p-2"><i class="fas fa-download text-xl"></i></a>
             </div>
         </div>
-        <div class="media-viewer-container w-full h-full flex items-center justify-center overflow-hidden" ontouchstart="handlePinchStart(event)" ontouchmove="handlePinchMove(event)" ontouchend="handlePinchEnd()">
+        <div class="media-viewer-container w-full h-full flex items-center justify-center overflow-hidden"
+             ontouchstart="handlePinchStart(event)" ontouchmove="handlePinchMove(event)" ontouchend="handlePinchEnd()">
             <img id="viewer-img" src="" class="hidden max-w-full max-h-full object-contain">
             <video id="viewer-video" src="" class="hidden max-w-full max-h-full" controls playsinline></video>
         </div>
     </div>
 
     <!-- ADMIN PANEL -->
-    <div id="admin-panel" class="hidden fixed inset-0 z-50 bg-gray-900 overflow-y-auto">
-        <div class="bg-gray-800 p-4 shadow-md flex justify-between sticky top-0 z-10">
-            <h2 class="text-xl font-bold text-red-500">Admin Console</h2>
+    <div id="admin-panel" class="hidden fixed inset-0 z-50 bg-gray-100 dark:bg-gray-900 overflow-y-auto">
+        <div class="bg-white dark:bg-gray-800 p-4 shadow-md flex justify-between sticky top-0 z-10">
+            <h2 class="text-xl font-bold text-red-600">Admin Console</h2>
             <button onclick="toggleAdminPanel()" class="text-gray-500"><i class="fas fa-times text-2xl"></i></button>
         </div>
         <div class="p-4 max-w-4xl mx-auto">
-            <div class="bg-gray-800 rounded-xl shadow p-6 mb-6 border border-gray-700">
-                <h3 class="font-bold mb-4 text-white text-lg border-b border-gray-700 pb-2">Create New User</h3>
+            <div class="bg-white dark:bg-gray-800 rounded-xl shadow p-6 mb-6">
+                <h3 class="font-bold mb-4 dark:text-white text-lg border-b dark:border-gray-700 pb-2">Create New User</h3>
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                    <input type="text" id="new-user-name" placeholder="Full Name" class="p-3 bg-gray-700 rounded-lg text-white">
-                    <input type="text" id="new-user-username" placeholder="Username" class="p-3 bg-gray-700 rounded-lg text-white">
-                    <input type="text" id="new-user-pass" placeholder="Temp Password" class="p-3 bg-gray-700 rounded-lg text-white">
+                    <input type="text" id="new-user-name" placeholder="Full Name" class="p-3 bg-gray-100 dark:bg-gray-700 rounded-lg dark:text-white">
+                    <input type="text" id="new-user-username" placeholder="Username" class="p-3 bg-gray-100 dark:bg-gray-700 rounded-lg dark:text-white">
+                    <input type="text" id="new-user-pass" placeholder="Temp Password" class="p-3 bg-gray-100 dark:bg-gray-700 rounded-lg dark:text-white">
                 </div>
-                <button onclick="adminCreateUser()" class="bg-green-600 text-white px-6 py-2 rounded-lg font-bold hover:bg-green-500">Create User</button>
+                <button onclick="adminCreateUser()" class="bg-green-500 text-white px-6 py-2 rounded-lg font-bold shadow hover:bg-green-600">Create User</button>
             </div>
-            <div class="bg-white dark:bg-gray-800 rounded-xl shadow p-6 mb-6 border border-gray-700">
+            <div class="bg-white dark:bg-gray-800 rounded-xl shadow p-6 mb-6">
                 <h3 class="font-bold mb-4 dark:text-white">Existing Users</h3>
                 <div id="admin-user-list" class="space-y-3"></div>
             </div>
-            <div class="bg-gray-800 rounded-xl shadow p-6 border border-gray-700">
-                <h3 class="font-bold mb-4 text-white">Global Actions</h3>
-                <button class="w-full bg-red-900 text-red-200 py-3 rounded-lg mb-2 font-bold" onclick="if(confirm('Clear ALL chats?')){server.fetch('/api/admin/clear-chats', {method:'POST'})}">Clear All System Chats</button>
+            <div class="bg-white dark:bg-gray-800 rounded-xl shadow p-6">
+                <h3 class="font-bold mb-4 dark:text-white">Global Actions</h3>
+                <button class="w-full bg-red-100 text-red-600 py-3 rounded-lg mb-2 font-bold" onclick="alert('All chats cleared from DB')">Clear All System Chats</button>
             </div>
         </div>
     </div>
@@ -530,29 +550,52 @@
     <!-- CONTEXT MENU -->
     <div id="msg-context-menu" class="hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-gray-800 rounded-t-2xl shadow-2xl z-40 context-menu p-4 pb-8">
         <div class="w-12 h-1 bg-gray-300 rounded-full mx-auto mb-4"></div>
-        <button onclick="activateReply()" class="w-full flex items-center gap-3 p-3 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg dark:text-white"><i class="fas fa-reply text-purple-500"></i> Reply</button>
-        <button onclick="copyMessageText()" class="w-full flex items-center gap-3 p-3 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg dark:text-white"><i class="fas fa-copy text-blue-500"></i> Copy Text</button>
+        <button onclick="activateReply()" class="w-full flex items-center gap-3 p-3 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg dark:text-white">
+            <i class="fas fa-reply text-purple-500"></i> Reply
+        </button>
+        <button onclick="copyMessageText()" class="w-full flex items-center gap-3 p-3 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg dark:text-white">
+            <i class="fas fa-copy text-blue-500"></i> Copy Text
+        </button>
         <button onclick="closeContextMenu()" class="w-full mt-2 p-3 text-center text-red-500 font-bold border rounded-lg">Cancel</button>
+    </div>
+
+    <!-- PASSWORD RESET PROMPT (For Admin) -->
+    <div id="admin-pw-reset-modal" class="hidden fixed inset-0 z-[60] bg-black/80 flex items-center justify-center p-4">
+        <div class="bg-gray-800 p-6 rounded-2xl shadow-xl w-full max-w-sm border border-gray-700">
+            <h3 class="font-bold text-lg mb-4 text-white">Reset User Password</h3>
+            <p class="text-sm text-gray-400 mb-4">Enter a new temporary password (4-8 chars).</p>
+            <input type="text" id="admin-new-pw" placeholder="Temp Password" class="w-full p-3 mb-4 rounded-lg bg-gray-700 text-white outline-none">
+            <div class="flex gap-3">
+                <button onclick="document.getElementById('admin-pw-reset-modal').classList.add('hidden')" class="flex-1 py-2 bg-gray-700 text-white rounded-lg font-bold">Cancel</button>
+                <button onclick="confirmAdminReset()" class="flex-1 py-2 bg-red-600 text-white rounded-lg font-bold">Reset</button>
+            </div>
+        </div>
     </div>
 
     <!-- ===================== LOGIC ===================== -->
     <script>
-        // THEMES
+        // --- THEME LOGIC ---
         const themes = [
             { id: 1, name: "Electric Blue", primary: "#3B82F6", secondary: "#2563EB", darkBg: "#0F172A" },
             { id: 2, name: "Neon Purple", primary: "#8B5CF6", secondary: "#7C3AED", darkBg: "#1E1E1E" },
             { id: 3, name: "Teal Cyan", primary: "#06B6D4", secondary: "#0891B2", darkBg: "#111827" },
             { id: 4, name: "Lime Green", primary: "#A3E635", secondary: "#65A30D", darkBg: "#1F2937" }
         ];
+
+        // Load saved theme or default to #2 (Purple)
         let currentThemeId = localStorage.getItem('sTalk_theme') ? parseInt(localStorage.getItem('sTalk_theme')) : 2;
 
         function applyTheme(id) {
             const theme = themes.find(t => t.id === id) || themes[1];
             currentThemeId = id;
             localStorage.setItem('sTalk_theme', id);
-            document.documentElement.style.setProperty('--theme-primary', theme.primary);
-            document.documentElement.style.setProperty('--theme-secondary', theme.secondary);
-            document.documentElement.style.setProperty('--theme-dark-bg', theme.darkBg);
+            
+            const root = document.documentElement;
+            root.style.setProperty('--theme-primary', theme.primary);
+            root.style.setProperty('--theme-secondary', theme.secondary);
+            root.style.setProperty('--theme-dark-bg', theme.darkBg);
+            
+            // Update UI Swatches
             renderThemeSelector();
         }
 
@@ -560,18 +603,73 @@
             const container = document.getElementById('theme-selector');
             if(!container) return;
             container.innerHTML = themes.map(t => `
-                <button onclick="applyTheme(${t.id})" class="theme-swatch w-10 h-10 rounded-full shadow-sm ring-2 ring-offset-2 ring-offset-gray-800 ${currentThemeId === t.id ? 'ring-white' : 'ring-transparent'}" style="background-color: ${t.primary};"></button>
+                <button onclick="applyTheme(${t.id})" 
+                    class="theme-swatch w-10 h-10 rounded-full shadow-sm transition-transform hover:scale-110 focus:outline-none ring-2 ring-offset-2 dark:ring-offset-gray-800 ${currentThemeId === t.id ? 'selected' : 'ring-transparent'}" 
+                    style="background-color: ${t.primary};" 
+                    title="${t.name}">
+                </button>
             `).join('');
         }
+
+        // Initial Apply
         applyTheme(currentThemeId);
 
-        // AUTH & APP
+
+        // --- WALLPAPER LOGIC ---
+        function saveWallpaper(input) {
+            if(!input.files[0]) return;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                localStorage.setItem('sTalk_bg', e.target.result);
+                applyWallpaper();
+                showToast("Wallpaper updated!");
+            };
+            reader.readAsDataURL(input.files[0]);
+            input.value = "";
+        }
+
+        function removeWallpaper() {
+            localStorage.removeItem('sTalk_bg');
+            applyWallpaper();
+            showToast("Wallpaper removed!");
+        }
+
+        function applyWallpaper() {
+            const bg = localStorage.getItem('sTalk_bg');
+            const container = document.getElementById('messages-container');
+            if (!container) return;
+            
+            if(bg) {
+                container.style.backgroundImage = `url('${bg}')`;
+                container.style.backgroundSize = 'cover';
+                container.style.backgroundPosition = 'center';
+            } else {
+                // Default pattern
+                container.style.backgroundImage = "url('https://i.pinimg.com/originals/85/ec/df/85ecdf1c3611ecc9b7fa85282d9526e0.png')";
+                container.style.backgroundSize = 'auto'; // Repeat pattern
+                container.style.backgroundPosition = '0 0';
+            }
+        }
+
+        // --- UTILS & HELPERS ---
+        function getInitials(name) {
+            return name ? name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() : '?';
+        }
+        function renderAvatar(user, sizeClass="w-10 h-10", fontSize="text-base") {
+            if (user.avatar && user.avatar.length > 10) {
+                return `<img src="${user.avatar}" class="${sizeClass} object-cover w-full h-full">`;
+            } else {
+                return `<div class="${sizeClass} flex items-center justify-center ${fontSize}">${getInitials(user.name)}</div>`;
+            }
+        }
+
+        // --- AUTH LOGIC ---
         function appLogin() {
             const u = document.getElementById('login-user').value;
             const p = document.getElementById('login-pass').value;
             server.login(u, p).then(user => {
                 if (user.mustChangePassword) {
-                    alert("Security: Please change your password.");
+                    alert("Security: Please change your temporary password.");
                     enterMainApp(user);
                     openChangePwModal();
                 } else {
@@ -584,23 +682,29 @@
             document.getElementById('view-login').classList.add('hidden');
             document.getElementById('view-main').classList.remove('hidden');
             document.getElementById('view-main').classList.add('flex');
-            if (audioCtx.state === 'suspended') audioCtx.resume();
-            updateMyProfileUI();
-            applyWallpaper();
             
-            // Init toggles
-            document.getElementById('sound-toggle').checked = soundEnabled;
-
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            
+            updateMyProfileUI();
+            applyWallpaper(); // Apply wallpaper on login/init
+            
             if(user.role === 'admin') document.getElementById('admin-btn').classList.remove('hidden');
-            server.fetchUsers(); 
+            
+            renderUserList();
+            // Init toggle states in Settings
+            document.getElementById('sound-toggle').checked = soundEnabled;
+            renderThemeSelector(); // ensure swatches are rendered
         }
 
         function updateMyProfileUI() {
             const user = server.currentUser;
+            // Sidebar
             document.getElementById('my-username').innerText = user.name;
-            document.getElementById('my-avatar').innerHTML = renderAvatar(user, "w-full h-full");
+            document.getElementById('my-avatar').innerHTML = renderAvatar(user, "w-full h-full rounded-full");
+            
+            // Settings Modal
             document.getElementById('settings-name').innerText = user.name;
-            document.getElementById('settings-avatar').innerHTML = renderAvatar(user, "w-full h-full", "text-3xl");
+            document.getElementById('settings-avatar').innerHTML = renderAvatar(user, "w-full h-full rounded-full", "text-3xl");
         }
 
         function logout() { 
@@ -608,7 +712,39 @@
             window.location.reload(); 
         }
 
-        // ADMIN RESET
+        // --- SETTINGS LOGIC ---
+        function openSettingsModal() { 
+            document.getElementById('settings-modal').classList.remove('hidden'); 
+            renderThemeSelector();
+        }
+        function closeSettingsModal() { document.getElementById('settings-modal').classList.add('hidden'); }
+        
+        function toggleTheme() { 
+            document.documentElement.classList.toggle('dark'); 
+        }
+        function toggleSound() { 
+            soundEnabled = !soundEnabled; 
+            localStorage.setItem('sTalk_sound', soundEnabled);
+        }
+        function toggleNotifications() {
+            if("Notification" in window && Notification.permission !== "granted") {
+                Notification.requestPermission().then(p => {
+                    if(p==="granted") new Notification("sTalk", { body: "Notifications Enabled!" });
+                });
+            }
+        }
+
+        function openChangePwModal() { document.getElementById('change-pw-modal').classList.remove('hidden'); }
+        function saveNewPassword() {
+            const p = document.getElementById('cp-new').value;
+            if(p.length < 4) return alert("Too short");
+            server.changePassword(p).then(() => {
+                alert("Password changed!");
+                document.getElementById('change-pw-modal').classList.add('hidden');
+            });
+        }
+
+        // --- ADMIN RESET ---
         let targetResetUserId = null;
         function promptAdminReset(userId) {
             targetResetUserId = userId;
@@ -624,60 +760,90 @@
             });
         }
 
-        // WALLPAPER
-        function saveWallpaper(input) {
-            if(!input.files[0]) return;
+        // --- CROPPING LOGIC ---
+        let cropCanvas, cropCtx, cropImg, cropState = { scale: 1, offsetX: 0, offsetY: 0, isDragging: false };
+        
+        function initCropper(input) {
+            if (!input.files[0]) return;
             const reader = new FileReader();
             reader.onload = (e) => {
-                localStorage.setItem('sTalk_bg', e.target.result);
-                applyWallpaper();
-                showToast("Wallpaper updated!");
-            };
+                cropImg = new Image(); cropImg.src = e.target.result;
+                cropImg.onload = () => {
+                    document.getElementById('cropper-modal').classList.remove('hidden');
+                    closeSettingsModal(); // close settings to show cropper
+                    cropCanvas = document.getElementById('crop-canvas'); 
+                    cropCtx = cropCanvas.getContext('2d');
+                    // Set dims
+                    const container = document.getElementById('crop-container');
+                    cropCanvas.width = container.offsetWidth;
+                    cropCanvas.height = container.offsetHeight;
+                    cropState = { scale: 1, offsetX: 0, offsetY: 0, isDragging: false }; 
+                    drawCropper();
+                };
+            }; 
             reader.readAsDataURL(input.files[0]);
-            input.value = "";
-        }
-        function removeWallpaper() { localStorage.removeItem('sTalk_bg'); applyWallpaper(); showToast("Wallpaper removed!"); }
-        function applyWallpaper() {
-            const bg = localStorage.getItem('sTalk_bg');
-            const c = document.getElementById('messages-container');
-            if (!c) return;
-            if(bg) { c.style.backgroundImage = `url('${bg}')`; c.style.backgroundSize = 'cover'; c.style.backgroundPosition='center'; }
-            else { c.style.backgroundImage = "url('https://i.pinimg.com/originals/85/ec/df/85ecdf1c3611ecc9b7fa85282d9526e0.png')"; c.style.backgroundSize = 'auto'; }
+            input.value = ""; // reset
         }
 
-        // HELPERS
-        function getInitials(name) { return name ? name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() : '?'; }
-        function renderAvatar(user, sizeClass, fontSize="text-base") {
-            if (user.avatar && user.avatar.length > 10) return `<img src="${user.avatar}" class="${sizeClass} object-cover w-full h-full">`;
-            return `<div class="${sizeClass} flex items-center justify-center ${fontSize}">${getInitials(user.name)}</div>`;
+        function closeCropper() {
+            document.getElementById('cropper-modal').classList.add('hidden');
+            openSettingsModal(); // return to settings
+        }
+
+        function drawCropper() {
+            cropCtx.clearRect(0, 0, cropCanvas.width, cropCanvas.height);
+            const w = cropImg.width * cropState.scale; 
+            const h = cropImg.height * cropState.scale;
+            const x = (cropCanvas.width - w)/2 + cropState.offsetX;
+            const y = (cropCanvas.height - h)/2 + cropState.offsetY;
+            cropCtx.drawImage(cropImg, x, y, w, h);
         }
         
-        // SOUND & NOTIFICATIONS
-        function toggleSound() {
-            soundEnabled = !soundEnabled;
-            localStorage.setItem('sTalk_sound', soundEnabled);
+        function updateZoom(val) { cropState.scale = parseFloat(val); drawCropper(); }
+        function startDrag(e) { 
+            cropState.isDragging = true; 
+            const cx = e.touches ? e.touches[0].clientX : e.clientX; 
+            const cy = e.touches ? e.touches[0].clientY : e.clientY; 
+            cropState.startX = cx - cropState.offsetX; 
+            cropState.startY = cy - cropState.offsetY; 
         }
-        
-        // ADMIN
+        function drag(e) { 
+            if (!cropState.isDragging) return; 
+            e.preventDefault(); 
+            const cx = e.touches ? e.touches[0].clientX : e.clientX; 
+            const cy = e.touches ? e.touches[0].clientY : e.clientY; 
+            cropState.offsetX = cx - cropState.startX; 
+            cropState.offsetY = cy - cropState.startY; 
+            drawCropper(); 
+        }
+        function endDrag() { cropState.isDragging = false; }
+
+        function saveCrop() {
+            const sc = document.createElement('canvas'); sc.width = 200; sc.height = 200;
+            sc.getContext('2d').drawImage(cropCanvas, (cropCanvas.width/2 - 100), (cropCanvas.height/2 - 100), 200, 200, 0, 0, 200, 200);
+            server.updateUser({ avatar: sc.toDataURL() });
+            closeCropper();
+        }
+
+        // --- APP CORE & ADMIN ---
         function adminCreateUser() {
-            const n = document.getElementById('new-user-name').value;
-            const u = document.getElementById('new-user-username').value;
-            const p = document.getElementById('new-user-pass').value;
-            if(!n || !u || !p) return alert("Fill all fields");
-            server.createUser(n, u, p).then(res => {
-                if(res.success) alert("User created!");
-                else alert(res.message);
-            });
+            const name = document.getElementById('new-user-name').value;
+            const user = document.getElementById('new-user-username').value;
+            const pass = document.getElementById('new-user-pass').value;
+            if(!name || !user || !pass) return alert("Fill all fields");
+            server.createAccount(name, user, pass);
+            renderUserList();
+            alert(`User ${user} created!`);
         }
 
         function renderUserList() {
             const list = document.getElementById('user-list');
             const others = server.users.filter(u => u.id !== server.currentUser.id);
             list.innerHTML = others.map(u => `
-                <div onclick="openChat(${u.id})" ontouchstart="openChat(${u.id})" class="p-4 flex items-center gap-3 hover:bg-gray-800 cursor-pointer border-b border-gray-700">
-                    <div class="relative w-12 h-12 rounded-full bg-gray-700 flex items-center justify-center font-bold border border-gray-600">
-                        ${renderAvatar(u, "w-full h-full", "text-lg")}
-                        ${u.status === 'online' ? '<div class="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-gray-800"></div>' : ''}
+                <div onclick="openChat(${u.id})" ontouchstart="openChat(${u.id})" class="p-4 flex items-center gap-3 hover:bg-gray-800 cursor-pointer border-b border-gray-700 dark:border-gray-700 transition-colors">
+                    <div class="relative w-12 h-12 rounded-full bg-gray-700 flex items-center justify-center font-bold border border-gray-600 dark:border-gray-600">
+                        ${renderAvatar(u, "w-full h-full rounded-full", "text-lg")}
+                        ${u.status === 'online' ? '<div class="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-gray-800 dark:border-gray-800"></div>' : ''}
                         ${(server.currentUser.unread && server.currentUser.unread[u.id] > 0) ? 
                             `<div class="unread-badge absolute -top-1 -right-1 bg-red-600 text-white text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center shadow-md">${server.currentUser.unread[u.id]}</div>` : ''}
                     </div>
@@ -687,13 +853,16 @@
                     </div>
                 </div>
             `).join('');
-
-            const adList = document.getElementById('admin-user-list');
-            adList.innerHTML = server.users.map(u => `
-                <div class="flex justify-between p-3 bg-gray-700 rounded-lg">
+            
+            // Admin list
+            const adminList = document.getElementById('admin-user-list');
+            adminList.innerHTML = server.users.map(u => `
+                <div class="flex items-center justify-between p-3 bg-gray-700 dark:bg-gray-700 rounded-lg">
                     <div class="flex items-center gap-2">
-                        <div class="w-8 h-8 rounded-full bg-gray-600 flex items-center justify-center text-xs font-bold overflow-hidden">${renderAvatar(u, "w-full h-full", "text-xs")}</div>
-                        <div><span class="text-white font-bold block">${u.name}</span><span class="text-xs text-gray-400">${u.role}</span></div>
+                        <div class="w-8 h-8 rounded-full bg-gray-600 flex items-center justify-center text-xs font-bold overflow-hidden">
+                             ${renderAvatar(u, "w-full h-full rounded-full", "text-xs")}
+                        </div>
+                        <div><span class="dark:text-white font-medium block">${u.name}</span><span class="text-xs text-gray-400">${u.role}</span></div>
                     </div>
                     <div class="flex gap-2">
                         <button onclick="promptAdminReset(${u.id})" class="text-xs bg-blue-900 text-blue-200 px-2 py-1 rounded">Reset PW</button>
@@ -703,33 +872,26 @@
             `).join('');
         }
 
-        // UI ACTIONS
-        function openSettingsModal() { document.getElementById('settings-modal').classList.remove('hidden'); renderThemeSelector(); }
-        function closeSettingsModal() { document.getElementById('settings-modal').classList.add('hidden'); }
         function toggleAdminPanel() { document.getElementById('admin-panel').classList.toggle('hidden'); }
-        function openChangePwModal() { document.getElementById('change-pw-modal').classList.remove('hidden'); }
-        function saveNewPassword() {
-            const p = document.getElementById('cp-new').value;
-            if(p.length < 4) return alert("Too short");
-            server.changePassword(p).then(() => {
-                alert("Password changed!");
-                document.getElementById('change-pw-modal').classList.add('hidden');
-            });
-        }
 
-        // CHAT
+        // --- CHAT LOGIC ---
         function openChat(userId) {
             activeChatId = userId;
             const user = server.users.find(u => u.id === userId);
             document.getElementById('chat-header-name').innerText = user.name;
-            const img = document.getElementById('chat-header-avatar');
-            const txt = document.getElementById('chat-header-initials');
-            if(user.avatar && user.avatar.length > 10) { img.src=user.avatar; img.classList.remove('hidden'); txt.classList.add('hidden'); }
-            else { img.classList.add('hidden'); txt.classList.remove('hidden'); txt.innerText = getInitials(user.name); }
+            
+            const imgEl = document.getElementById('chat-header-avatar');
+            const txtEl = document.getElementById('chat-header-initials');
+            if(user.avatar && user.avatar.length > 10) {
+                imgEl.src = user.avatar; imgEl.classList.remove('hidden'); txtEl.classList.add('hidden');
+            } else {
+                imgEl.classList.add('hidden'); txtEl.classList.remove('hidden'); txtEl.innerText = getInitials(user.name);
+            }
+
             document.getElementById('chat-header-status').innerText = user.status === 'online' ? 'Online' : `Last seen: ${user.lastSeen}`;
             
-            // MOBILE SLIDE
-            if(window.innerWidth < 768) document.getElementById('chat-interface').classList.remove('translate-x-full');
+            // MOBILE FIX: Force remove translate on open
+            document.getElementById('chat-interface').classList.remove('translate-x-full');
             
             server.loadMessages(userId);
             server.markRead(userId);
@@ -738,7 +900,8 @@
 
         function closeChat() {
             activeChatId = null;
-            if(window.innerWidth < 768) document.getElementById('chat-interface').classList.add('translate-x-full');
+            // MOBILE FIX: Force add translate on close
+            document.getElementById('chat-interface').classList.add('translate-x-full');
         }
 
         function updateUI() {
@@ -751,24 +914,20 @@
                 const isSelf = msg.senderId === server.currentUser.id;
                 const align = isSelf ? 'justify-end' : 'justify-start';
                 const bg = isSelf ? 'msg-bubble-self' : 'msg-bubble-other';
-                // Ticks
+                
+                // TICKS LOGIC
                 let tick = '<i class="fas fa-check text-gray-400 text-[10px]"></i>'; // Sent
                 if(msg.status === 'delivered') tick = '<i class="fas fa-check-double text-gray-400 text-[10px]"></i>';
                 if(msg.status === 'read') tick = '<i class="fas fa-check-double tick-read text-[10px]"></i>';
                 
-                let content = `<p class="text-sm md:text-base">${msg.text}</p>`;
-                if(msg.type === 'image') content = `<img src="${msg.fileData}" class="max-w-[200px] rounded-lg mb-1 cursor-pointer" onclick="openMediaViewer('${msg.fileData}', 'image')">`;
+                let contentHtml = `<p class="text-sm md:text-base">${msg.text}</p>`;
+                if(msg.type === 'image') {
+                    contentHtml = `<img src="${msg.fileData}" class="max-w-[200px] rounded-lg cursor-pointer mb-1" onclick="openMediaViewer('${msg.fileData}', 'image')">`;
+                } else if (msg.type === 'video') {
+                    contentHtml = `<div class="relative max-w-[200px] cursor-pointer" onclick="openMediaViewer('${msg.fileData}', 'video')"><video src="${msg.fileData}" class="rounded-lg w-full"></video><div class="absolute inset-0 flex items-center justify-center bg-black/30 rounded-lg"><i class="fas fa-play text-white text-2xl"></i></div></div>`;
+                }
                 
-                return `
-                <div class="flex ${align} mb-2" oncontextmenu="event.preventDefault(); showMsgOptions('${msg.id}')" onmousedown="startLongPress('${msg.id}')" onmouseup="cancelLongPress()" ontouchstart="startLongPress('${msg.id}')" ontouchend="cancelLongPress()">
-                    <div class="${bg} p-3 max-w-[75%] shadow-sm relative">
-                        ${content}
-                        <div class="text-[10px] flex justify-end gap-1 opacity-70 mt-1">
-                            <span>${new Date(msg.sentAt).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</span>
-                            ${isSelf?tick:''}
-                        </div>
-                    </div>
-                </div>`;
+                return `<div class="flex ${align} mb-2" oncontextmenu="event.preventDefault(); showMsgOptions('${msg.id}')" onmousedown="startLongPress('${msg.id}')" onmouseup="cancelLongPress()" ontouchstart="startLongPress('${msg.id}')" ontouchend="cancelLongPress()"><div class="${bg} p-3 max-w-[75%] shadow-sm relative">${contentHtml}<div class="text-[10px] flex justify-end gap-1 opacity-70 mt-1"><span>${new Date(msg.sentAt).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</span>${isSelf?tick:''}</div></div></div>`;
             }).join('');
             container.scrollTop = container.scrollHeight;
         }
@@ -781,11 +940,15 @@
         }
         function triggerFileUpload() { document.getElementById('file-input').click(); }
         function handleFiles(files) {
-            Array.from(files).forEach(f => {
-                const r = new FileReader();
-                r.onload = e => server.sendMessage(activeChatId, "", f.type.startsWith('image')?'image':f.type.startsWith('video')?'video':'file', e.target.result);
-                r.readAsDataURL(f);
+            Array.from(files).forEach(file => {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const type = file.type.startsWith('image') ? 'image' : (file.type.startsWith('video') ? 'video' : 'file');
+                    server.sendMessage(activeChatId, "", type, e.target.result, replyContext).then(updateUI);
+                };
+                reader.readAsDataURL(file);
             });
+            cancelReply();
         }
         function deleteCurrentChat() {
             if(confirm("Delete this chat permanently?")) {
@@ -875,45 +1038,6 @@
             t.innerText = msg; 
             document.body.appendChild(t); 
             setTimeout(() => t.remove(), 3000); 
-        }
-        
-        // Cropper Logic
-        let cropCanvas, cropCtx, cropImg, cropState = { scale: 1, offsetX: 0, offsetY: 0, isDragging: false };
-        function initCropper(input) {
-            if(!input.files[0]) return;
-            const reader = new FileReader();
-            reader.onload = e => {
-                cropImg = new Image(); cropImg.src = e.target.result;
-                cropImg.onload = () => {
-                    document.getElementById('cropper-modal').classList.remove('hidden');
-                    document.getElementById('settings-modal').classList.add('hidden');
-                    cropCanvas = document.getElementById('crop-canvas'); 
-                    cropCtx = cropCanvas.getContext('2d');
-                    const c = document.getElementById('crop-container');
-                    cropCanvas.width = c.offsetWidth; cropCanvas.height = c.offsetHeight;
-                    cropState = { scale: 1, offsetX: 0, offsetY: 0, isDragging: false };
-                    drawCropper();
-                }
-            };
-            reader.readAsDataURL(input.files[0]);
-            input.value = "";
-        }
-        function closeCropper() { document.getElementById('cropper-modal').classList.add('hidden'); document.getElementById('settings-modal').classList.remove('hidden'); }
-        function drawCropper() {
-            cropCtx.clearRect(0,0,cropCanvas.width,cropCanvas.height);
-            const w = cropImg.width*cropState.scale, h = cropImg.height*cropState.scale;
-            const x = (cropCanvas.width-w)/2 + cropState.offsetX, y = (cropCanvas.height-h)/2 + cropState.offsetY;
-            cropCtx.drawImage(cropImg, x, y, w, h);
-        }
-        function updateZoom(v) { cropState.scale = parseFloat(v); drawCropper(); }
-        function startDrag(e) { cropState.isDragging=true; const p = e.touches?e.touches[0]:e; cropState.sx = p.clientX-cropState.offsetX; cropState.sy = p.clientY-cropState.offsetY; }
-        function drag(e) { if(!cropState.isDragging)return; e.preventDefault(); const p = e.touches?e.touches[0]:e; cropState.offsetX = p.clientX-cropState.sx; cropState.offsetY = p.clientY-cropState.sy; drawCropper(); }
-        function endDrag() { cropState.isDragging=false; }
-        function saveCrop() {
-            const sc = document.createElement('canvas'); sc.width=200; sc.height=200;
-            sc.getContext('2d').drawImage(cropCanvas, (cropCanvas.width/2-100), (cropCanvas.height/2-100), 200, 200, 0, 0, 200, 200);
-            server.updateUser({ avatar: sc.toDataURL() });
-            closeCropper();
         }
     </script>
 </body>
