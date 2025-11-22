@@ -16,7 +16,7 @@ bash <(curl -s https://raw.githubusercontent.com/JungleeAadmi/sTalk-v4/main/unin
 **To remove permanently**
 
 ```
-bash <(curl -s [https://raw.githubusercontent.com/JungleeAadmi/sTalk-v4/main/remove-complete.sh](https://raw.githubusercontent.com/JungleeAadmi/sTalk-v4/main/remove-complete.sh))
+bash <(curl -s https://raw.githubusercontent.com/JungleeAadmi/sTalk-v4/main/remove-complete.sh)
 ```
 ### Important Note on User Data
 Currently, your app uses **`localStorage`** (Mock DB) inside `index.html`. This means the user data (chats, profiles) lives **in the user's browser**, not on the server.
