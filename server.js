@@ -16,21 +16,21 @@ const PORT = process.env.PORT || 3000;
 const DB_FILE = path.join(__dirname, 'database.json');
 const VAPID_FILE = path.join(__dirname, 'vapid.json');
 
-// Middleware
+// MIDDLEWARE - Increased limit for large profile images
 app.use(cors());
-app.use(express.json({ limit: '50mb' })); // Increased limit for base64 images
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 // --- VAPID KEYS (Push Notifications) ---
 let vapidKeys = { publicKey: '', privateKey: '' };
 
-// Generate or Load Keys
 if (fs.existsSync(VAPID_FILE)) {
     vapidKeys = JSON.parse(fs.readFileSync(VAPID_FILE));
 } else {
     vapidKeys = webpush.generateVAPIDKeys();
     fs.writeFileSync(VAPID_FILE, JSON.stringify(vapidKeys, null, 2));
-    console.log("Generated new VAPID Keys");
+    console.log("✅ NEW VAPID KEYS GENERATED");
 }
 
 webpush.setVapidDetails(
@@ -102,7 +102,7 @@ app.post('/api/login', (req, res) => {
         user.status = "online";
         user.lastSeen = "Online";
         saveDB();
-        io.emit('user_status_update', { userId: user.id, status: "online" });
+        io.emit('users_update', db.users.map(u => ({...u, password: ""})));
         res.json({ success: true, user });
     } else {
         res.status(401).json({ success: false, message: "Invalid credentials" });
@@ -174,13 +174,26 @@ app.get('/api/chats/:userId', (req, res) => {
 
 // Chats: Read
 app.post('/api/chats/read', (req, res) => {
-    const { userId, senderId } = req.body;
+    const { userId, senderId, chatId } = req.body;
+    
+    // 1. Reset unread count
     const user = db.users.find(u => u.id === userId);
-    if (user && user.unread) {
+    if (user) {
+        if (!user.unread) user.unread = {};
         user.unread[senderId] = 0;
-        saveDB();
-        io.emit('users_update', db.users.map(u => ({...u, password: ""}))); 
     }
+    
+    // 2. Mark messages as 'read'
+    if (db.chats[chatId]) {
+        db.chats[chatId].forEach(m => {
+            if (m.senderId === senderId) m.status = 'read';
+        });
+        // Notify the SENDER that their messages were read
+        io.to(chatId).emit('messages_read', { chatId });
+    }
+
+    saveDB();
+    io.emit('users_update', db.users.map(u => ({...u, password: ""}))); 
     res.json({ success: true });
 });
 
@@ -190,7 +203,7 @@ app.post('/api/messages', (req, res) => {
     if (!db.chats[chatId]) db.chats[chatId] = [];
     
     message.sentAt = new Date().toISOString();
-    message.status = 'sent';
+    message.status = 'sent'; // Initial status
     
     db.chats[chatId].push(message);
 
@@ -203,7 +216,20 @@ app.post('/api/messages', (req, res) => {
 
     saveDB();
     
+    // Send via Socket
     io.to(chatId).emit('message_received', message);
+    
+    // Mark as delivered immediately if socket sent ok (simplified)
+    // In reality, client ack sets this, but we'll simulate:
+    setTimeout(() => {
+        const msgRef = db.chats[chatId].find(m => m.id === message.id);
+        if(msgRef && msgRef.status === 'sent') {
+            msgRef.status = 'delivered';
+            saveDB();
+            io.to(chatId).emit('message_status_update', { id: message.id, status: 'delivered', chatId });
+        }
+    }, 1000);
+
     io.emit('users_update', db.users.map(u => ({...u, password: ""})));
 
     // --- PUSH NOTIFICATION LOGIC ---
@@ -214,15 +240,13 @@ app.post('/api/messages', (req, res) => {
         const payload = JSON.stringify({
             title: `New message from ${senderName}`,
             body: message.text || (message.type === 'image' ? 'Sent an image' : 'Sent a file'),
-            icon: '/logo.svg', // Ensure this path is correct in public/
-            url: '/', // Open app root
+            icon: '/logo.svg',
+            url: '/',
             data: { chatId: chatId, senderId: message.senderId }
         });
 
-        // Send to all recipient's devices
         db.subscriptions[recipientId].forEach((sub, index) => {
             webpush.sendNotification(sub, payload).catch(err => {
-                // 410/404 means subscription is gone/expired
                 if (err.statusCode === 410 || err.statusCode === 404) {
                     db.subscriptions[recipientId].splice(index, 1);
                     saveDB();
@@ -261,7 +285,7 @@ app.post('/api/admin/clear-chats', (req, res) => {
 
 // Socket
 io.on('connection', (socket) => {
-    socket.on('join_room', (roomId) => socket.join(roomId));
+    socket.on('join_room', (id) => socket.join(id));
 });
 
 // SPA Fallback
