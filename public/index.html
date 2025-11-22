@@ -109,6 +109,8 @@
         
         .unread-badge { animation: pulse 2s infinite; }
         @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.1); } 100% { transform: scale(1); } }
+        
+        .highlight-user { background-color: rgba(139, 92, 246, 0.1); border-left: 4px solid var(--theme-primary); }
     </style>
     <script>
         tailwind.config = { darkMode: 'class', theme: { extend: { fontFamily: { sans: ['Nunito', 'sans-serif'] }, colors: { primary: 'var(--theme-primary)', themeDarkBg: 'var(--theme-dark-bg)', dark: '#111827' } } } }
@@ -258,6 +260,13 @@
             
             async markRead(senderId) {
                 const roomId = getChatRoomId(this.currentUser.id, senderId);
+                
+                // Optimistic local update
+                if (this.currentUser.unread) {
+                    this.currentUser.unread[senderId] = 0;
+                    renderUserList(); // Refresh UI to clear badge
+                }
+
                 await fetch('/api/chats/read', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -442,6 +451,7 @@
                         <button onclick="removeWallpaper()" class="px-3 py-2 bg-red-900 text-red-200 rounded-lg text-sm font-bold hover:bg-red-200 transition"><i class="fas fa-trash"></i></button>
                     </div>
                     <input type="file" id="bg-upload" class="hidden" accept="image/*" onchange="saveWallpaper(this)">
+                    <p class="text-xs text-gray-500 mt-2">Upload an image from your gallery to use as background.</p>
                 </div>
 
                 <!-- Toggles -->
@@ -837,10 +847,11 @@
         }
 
         function renderUserList() {
+            // Regular list
             const list = document.getElementById('user-list');
             const others = server.users.filter(u => u.id !== server.currentUser.id);
             list.innerHTML = others.map(u => `
-                <div onclick="openChat(${u.id})" ontouchstart="openChat(${u.id})" class="p-4 flex items-center gap-3 hover:bg-gray-800 cursor-pointer border-b border-gray-700 dark:border-gray-700 transition-colors">
+                <div onclick="openChat(${u.id})" ontouchstart="openChat(${u.id})" class="p-4 flex items-center gap-3 hover:bg-gray-800 cursor-pointer border-b border-gray-700 dark:border-gray-700 transition-colors ${server.currentUser.unread && server.currentUser.unread[u.id] > 0 ? 'highlight-user' : ''}">
                     <div class="relative w-12 h-12 rounded-full bg-gray-700 flex items-center justify-center font-bold border border-gray-600 dark:border-gray-600">
                         ${renderAvatar(u, "w-full h-full rounded-full", "text-lg")}
                         ${u.status === 'online' ? '<div class="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-gray-800 dark:border-gray-800"></div>' : ''}
