@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/logo.svg" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/logo.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, interactive-widget=resizes-content, viewport-fit=cover" />
+    
+    <title>sTalk</title>
+
+    <script>
+      (function() {
+        try {
+          const saved = localStorage.getItem('stalk_user');
+          if (saved) {
+            const user = JSON.parse(saved);
+            const settings = user.settings || {};
+            if (settings.darkMode) document.documentElement.classList.add('dark');
+            const color = settings.theme || '#2563eb';
+            document.documentElement.style.setProperty('--primary-color', color);
+          }
+        } catch (e) { console.error("Theme Load Error", e); }
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>

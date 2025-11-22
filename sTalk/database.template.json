@@ -1,0 +1,15 @@
+{
+  "users": [
+    {
+      "id": "admin-uuid",
+      "username": "admin",
+      "password": "adminpassword", 
+      "role": "admin",
+      "avatar": null,
+      "settings": { "notifications": true, "theme": "#2563eb", "wallpaper": null, "darkMode": true },
+      "isOnline": false,
+      "lastSeen": null
+    }
+  ],
+  "chats": []
+}

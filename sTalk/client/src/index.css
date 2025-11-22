@@ -1,0 +1,29 @@
+@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@300;400;600;700&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html, body {
+    @apply font-sans bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100;
+    /* CRITICAL FOR IOS: Lock the scroll behavior */
+    height: 100%;
+    width: 100%;
+    overflow: hidden;
+    overscroll-behavior: none; /* Prevents rubber-banding */
+    position: fixed; /* Anchors the body so it can't be pushed up */
+  }
+  
+  #root {
+    height: 100%;
+    width: 100%;
+  }
+}
+
+/* iOS Safe Area Utilities */
+.safe-area-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.safe-area-top {
+  padding-top: env(safe-area-inset-top);
+}

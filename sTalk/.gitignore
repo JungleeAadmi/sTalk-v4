@@ -1,0 +1,10 @@
+node_modules
+client/node_modules
+client/dist
+.env
+.DS_Store
+# User Data (Never upload these)
+database.json
+vapid.json
+uploads/*
+!uploads/.gitkeep
