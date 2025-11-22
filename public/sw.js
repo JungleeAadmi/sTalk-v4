@@ -1,41 +1,36 @@
-// sw.js - Basic Service Worker for PWA and Push
-self.addEventListener('install', (event) => {
-    self.skipWaiting();
+self.addEventListener('push', function(event) {
+  let data = { title: 'sTalk', body: 'New message', url: '/' };
+  try {
+    data = event.data.json();
+  } catch (e) {
+    data.body = event.data ? event.data.text() : data.body;
+  }
+
+  const options = {
+    body: data.body,
+    icon: data.icon || '/logo.svg',
+    badge: '/logo.svg',
+    data: { url: data.url }
+  };
+
+  event.waitUntil(
+    self.registration.showNotification(data.title, options)
+  );
 });
 
-self.addEventListener('activate', (event) => {
-    event.waitUntil(self.clients.claim());
-});
-
-// Push Notification Handler
-self.addEventListener('push', (event) => {
-    const data = event.data ? event.data.json() : {};
-    const title = data.title || 'New Message';
-    const options = {
-        body: data.body || 'You have a new message.',
-        icon: '/logo.svg', // Path to your icon
-        badge: '/logo.svg',
-        data: { url: data.url || '/' }
-    };
-
-    event.waitUntil(self.registration.showNotification(title, options));
-});
-
-// Notification Click Handler
-self.addEventListener('notificationclick', (event) => {
-    event.notification.close();
-    event.waitUntil(
-        clients.matchAll({ type: 'window' }).then((windowClients) => {
-            // If a window is already open, focus it
-            for (let client of windowClients) {
-                if (client.url === '/' && 'focus' in client) {
-                    return client.focus();
-                }
-            }
-            // Otherwise open a new window
-            if (clients.openWindow) {
-                return clients.openWindow('/');
-            }
-        })
-    );
+self.addEventListener('notificationclick', function(event) {
+  event.notification.close();
+  event.waitUntil(
+    clients.matchAll({ type: 'window' }).then(windowClients => {
+      for (var i = 0; i < windowClients.length; i++) {
+        var client = windowClients[i];
+        if (client.url === '/' && 'focus' in client) {
+          return client.focus();
+        }
+      }
+      if (clients.openWindow) {
+        return clients.openWindow(event.notification.data.url || '/');
+      }
+    })
+  );
 });

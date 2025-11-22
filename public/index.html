@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>sTalk - Secure Chat</title>
     <link rel="manifest" href="manifest.json">
     <meta name="mobile-web-app-capable" content="yes">
@@ -14,7 +14,6 @@
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <!-- Socket.IO Library (CDN) -->
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
     
     <style>
@@ -24,264 +23,141 @@
             --theme-dark-bg: #1E1E1E;
             --primary-grad: linear-gradient(135deg, var(--theme-primary) 0%, var(--theme-secondary) 100%);
         }
-        /* FIXED: Locks body to viewport to prevent header scrolling on mobile */
-        body { 
-            font-family: 'Nunito', sans-serif; 
-            overscroll-behavior-y: none;
-            position: fixed; 
-            width: 100%;
+
+        /* LAYOUT FIXES FOR KEYBOARD SCROLLING */
+        html, body {
             height: 100%;
+            width: 100%;
+            overflow: hidden; /* Prevent body scroll */
+            margin: 0;
+            padding: 0;
+            font-family: 'Nunito', sans-serif;
+        }
+        
+        /* The main app container fills the screen */
+        #view-main {
+            height: 100dvh; /* Use dynamic viewport height */
+            display: flex;
+            flex-direction: row;
             overflow: hidden;
         }
+
+        /* Chat Interface: Flex Column */
+        #chat-interface {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            overflow: hidden;
+            position: relative;
+        }
+
+        /* Header: Fixed, no shrink */
+        #chat-header {
+            flex: 0 0 64px; /* Fixed height */
+            z-index: 20;
+        }
+
+        /* Messages: Takes remaining space, scrollable */
+        #messages-container {
+            flex: 1 1 auto;
+            overflow-y: auto;
+            overflow-x: hidden;
+            -webkit-overflow-scrolling: touch;
+            padding-bottom: 20px;
+        }
+
+        /* Input: Fixed, no shrink, stays at bottom */
+        #chat-input-area {
+            flex: 0 0 auto;
+            z-index: 20;
+            padding-bottom: env(safe-area-inset-bottom); /* iPhone X+ fix */
+        }
+
+        /* Other Styles */
         .scrollbar-hide::-webkit-scrollbar { display: none; }
         .msg-bubble-self { background: var(--primary-grad); color: white; border-radius: 20px 20px 4px 20px; }
         .msg-bubble-other { background-color: #374151; color: #f3f4f6; border-radius: 20px 20px 20px 4px; }
-        .tick { transition: all 0.2s ease; }
-        .tick-read { color: #60A5FA; } 
         .toggle-checkbox:checked { right: 0; border-color: var(--theme-primary); }
         .toggle-checkbox:checked + .toggle-label { background-color: var(--theme-primary); }
         .theme-swatch.selected { outline: 3px solid var(--theme-primary); outline-offset: 2px; }
-        
-        /* Layout Fixes */
-        #chat-interface {
-            height: 100%;
-            display: flex;
-            flex-direction: column;
-        }
-        /* Ensures header stays at top */
-        #chat-header {
-            flex-shrink: 0; 
-        }
-        /* Ensures input stays at bottom */
-        #chat-input-area {
-            flex-shrink: 0;
-        }
-        /* Allows messages to take remaining space */
-        #messages-container {
-            flex-grow: 1;
-            overflow-y: auto;
-            -webkit-overflow-scrolling: touch;
-        }
+        .unread-badge { animation: pulse 2s infinite; }
+        @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.1); } 100% { transform: scale(1); } }
     </style>
     <script>
         tailwind.config = { darkMode: 'class', theme: { extend: { fontFamily: { sans: ['Nunito', 'sans-serif'] }, colors: { primary: 'var(--theme-primary)', themeDarkBg: 'var(--theme-dark-bg)', dark: '#111827' } } } }
     </script>
 </head>
-<!-- FORCED DARK MODE DEFAULT -->
-<body class="bg-gray-900 dark text-white h-screen flex flex-col transition-colors duration-300 select-none font-sans">
+<body class="bg-gray-900 dark text-white">
 
-    <!-- ===================== API CLIENT ===================== -->
+    <!-- API & LOGIC -->
     <script>
-        // Initialize socket only if io is available
         let socket;
-        if (typeof io !== 'undefined') {
-            socket = io();
-        } else {
-            console.error("Socket.io library not loaded.");
-            socket = { on: () => {}, emit: () => {} };
+        if (typeof io !== 'undefined') socket = io();
+        else { console.error("Socket.io missing"); socket = { on:()=>{}, emit:()=>{} }; }
+
+        function urlBase64ToUint8Array(base64String) {
+            const padding = '='.repeat((4 - base64String.length % 4) % 4);
+            const base64 = (base64String + padding).replace(/\-/g, '+').replace(/_/g, '/');
+            const rawData = window.atob(base64);
+            const outputArray = new Uint8Array(rawData.length);
+            for (let i = 0; i < rawData.length; ++i) outputArray[i] = rawData.charCodeAt(i);
+            return outputArray;
         }
-        
+
         class APIClient {
             constructor() {
                 this.currentUser = null;
                 this.users = [];
                 this.chats = {};
                 
-                // Listen for global updates
                 socket.on('users_update', (users) => {
                     this.users = users;
                     renderUserList();
                 });
                 
                 socket.on('message_received', (msg) => {
-                    // If message belongs to active chat or is from self
                     if (activeChatId && (msg.senderId === activeChatId || msg.senderId === this.currentUser.id)) {
-                        // Avoid duplicates
                         if (!this.chats[getChatRoomId(this.currentUser.id, activeChatId)]?.find(m => m.id === msg.id)) {
                             this.addMessageToLocal(msg);
                             updateUI();
+                            if(msg.senderId === activeChatId) this.markRead(activeChatId);
                         }
                     }
-                    
-                    // NOTIFICATION LOGIC
-                    if(msg.senderId !== this.currentUser.id) {
-                        playNotificationSound();
-                        
-                        // Show visual notification if allowed
-                        if(Notification.permission === "granted") {
-                            // Only show if app is hidden OR user is chatting with someone else
-                            if(document.visibilityState === 'hidden' || activeChatId !== msg.senderId) {
-                                const sender = this.users.find(u => u.id === msg.senderId);
-                                const name = sender ? sender.name : "New Message";
-                                const notif = new Notification(`Message from ${name}`, {
-                                    body: msg.text || "Sent a file",
-                                    icon: 'logo.svg'
-                                });
-                                notif.onclick = () => { 
-                                    window.focus(); 
-                                    // Ideally deep link to chat here
-                                };
-                            }
-                        }
-                    }
+                    if(msg.senderId !== this.currentUser.id) playNotificationSound();
                 });
                 
-                socket.on('chats_cleared', () => {
-                    this.chats = {};
-                    updateUI();
-                    alert("Admin cleared all chats.");
-                });
+                socket.on('chats_cleared', () => { this.chats = {}; updateUI(); alert("Admin cleared chats."); });
             }
 
-            async checkAuth() {
-                const storedUser = localStorage.getItem('sTalk_user');
-                if (storedUser) {
-                    try {
-                        this.currentUser = JSON.parse(storedUser);
-                        this.fetchUsers();
-                        return true;
-                    } catch (e) {
-                        localStorage.removeItem('sTalk_user');
-                        return false;
-                    }
-                }
-                return false;
-            }
-
-            async login(username, password) {
+            // FIXED: ADDED MISSING UPDATE USER FUNCTION
+            async updateUser(data) {
                 try {
-                    const res = await fetch('/api/login', {
-                        method: 'POST',
+                    const res = await fetch(`/api/users/${this.currentUser.id}`, {
+                        method: 'PUT',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ username, password })
+                        body: JSON.stringify(data)
                     });
-                    if (!res.ok) throw new Error('Login failed');
-                    const data = await res.json();
-                    if (data.success) {
-                        this.currentUser = data.user;
-                        localStorage.setItem('sTalk_user', JSON.stringify(data.user));
-                        this.fetchUsers();
-                        return data.user;
-                    } else {
-                        throw data.message;
+                    if (res.ok) {
+                        // Update local state
+                        if(data.avatar) this.currentUser.avatar = data.avatar;
+                        localStorage.setItem('sTalk_user', JSON.stringify(this.currentUser));
+                        updateMyProfileUI();
                     }
-                } catch (error) {
-                    console.error("Login error:", error);
-                    throw error;
-                }
+                } catch (e) { console.error(e); }
             }
 
-            async fetchUsers() {
-                try {
-                    const res = await fetch('/api/users');
-                    this.users = await res.json();
-                    renderUserList();
-                } catch (error) { console.error(error); }
-            }
-
-            async createUser(name, username, password) {
-                const res = await fetch('/api/users', {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ name, username, password })
-                });
-                return await res.json();
-            }
-
-            async changePassword(newPassword) {
-                const res = await fetch(`/api/users/${this.currentUser.id}`, {
-                    method: 'PUT', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ password: newPassword })
-                });
-                this.currentUser.mustChangePassword = false;
-                localStorage.setItem('sTalk_user', JSON.stringify(this.currentUser));
-                return await res.json();
-            }
-            
-            async adminResetPassword(targetUserId, newTempPass) {
-                const res = await fetch('/api/admin/reset-password', {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ userId: targetUserId, newPassword: newTempPass })
-                });
-                return await res.json();
-            }
-            
-            async deleteUser(id) {
-                await fetch(`/api/users/${id}`, { method: 'DELETE' });
-                this.fetchUsers();
-            }
-
-            async sendMessage(otherUserId, content, type='text', fileData=null, replyTo=null) {
-                const roomId = getChatRoomId(this.currentUser.id, otherUserId);
-                
-                const msg = {
-                    id: 'm' + Date.now(),
-                    chatId: roomId,
-                    senderId: this.currentUser.id,
-                    text: content,
-                    type, fileData, replyTo,
-                    sentAt: new Date().toISOString(),
-                    status: 'sent'
-                };
-
-                this.addMessageToLocal(msg);
-                updateUI();
-
-                try {
-                    const res = await fetch('/api/messages', {
-                        method: 'POST', headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ chatId: roomId, message: msg })
-                    });
-                    return await res.json();
-                } catch (error) { return { success: false }; }
-            }
-            
-            async loadMessages(otherUserId) {
-                const roomId = getChatRoomId(this.currentUser.id, otherUserId);
-                socket.emit('join_room', roomId); 
-                try {
-                    const res = await fetch(`/api/chats/${otherUserId}?chatId=${roomId}`);
-                    const history = await res.json();
-                    this.chats[roomId] = history;
-                    updateUI();
-                } catch (error) {
-                    this.chats[roomId] = [];
-                    updateUI();
-                }
-            }
-            
-            addMessageToLocal(msg) {
-                const roomId = msg.chatId;
-                if (!this.chats[roomId]) this.chats[roomId] = [];
-                this.chats[roomId].push(msg);
-            }
-            
-            // PUSH REGISTRATION
             async registerPush() {
-                if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+                if (!('serviceWorker' in navigator) || !('PushManager' in window)) return alert("Push not supported");
                 
                 try {
-                    // Wait for service worker to be ready
                     const reg = await navigator.serviceWorker.ready;
-                    
-                    // Helper to convert key
-                    function urlBase64ToUint8Array(base64String) {
-                        const padding = '='.repeat((4 - base64String.length % 4) % 4);
-                        const base64 = (base64String + padding).replace(/\-/g, '+').replace(/_/g, '/');
-                        const rawData = window.atob(base64);
-                        const outputArray = new Uint8Array(rawData.length);
-                        for (let i = 0; i < rawData.length; ++i) {
-                            outputArray[i] = rawData.charCodeAt(i);
-                        }
-                        return outputArray;
-                    }
-
                     const keyRes = await fetch('/api/push/key');
                     const { publicKey } = await keyRes.json();
                     
-                    const convertedKey = urlBase64ToUint8Array(publicKey);
                     const sub = await reg.pushManager.subscribe({
                         userVisibleOnly: true,
-                        applicationServerKey: convertedKey
+                        applicationServerKey: urlBase64ToUint8Array(publicKey)
                     });
                     
                     await fetch('/api/push/subscribe', {
@@ -289,46 +165,93 @@
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ userId: this.currentUser.id, subscription: sub })
                     });
-                    console.log("Push Registered!");
                     alert("Notifications enabled!");
                 } catch (err) {
-                    console.error("Push Registration failed", err);
-                    alert("Failed to enable notifications: " + err.message);
+                    console.error(err);
+                    alert("Failed to enable notifications. Ensure you added to Home Screen.");
                 }
             }
+
+            async login(username, password) {
+                const res = await fetch('/api/login', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({username, password}) });
+                const data = await res.json();
+                if (data.success) {
+                    this.currentUser = data.user;
+                    localStorage.setItem('sTalk_user', JSON.stringify(data.user));
+                    this.fetchUsers();
+                    return data.user;
+                } else throw data.message;
+            }
+            
+            async checkAuth() {
+                const stored = localStorage.getItem('sTalk_user');
+                if(stored) {
+                    this.currentUser = JSON.parse(stored);
+                    this.fetchUsers();
+                    return true;
+                }
+                return false;
+            }
+
+            async fetchUsers() {
+                const res = await fetch('/api/users');
+                this.users = await res.json();
+                renderUserList();
+            }
+            
+            async markRead(senderId) {
+                await fetch('/api/chats/read', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: this.currentUser.id, senderId }) });
+            }
+
+            async sendMessage(otherUserId, content, type='text', fileData=null, replyTo=null) {
+                const roomId = getChatRoomId(this.currentUser.id, otherUserId);
+                const msg = { id: 'm' + Date.now(), chatId: roomId, senderId: this.currentUser.id, text: content, type, fileData, replyTo, sentAt: new Date().toISOString(), status: 'sent' };
+                this.addMessageToLocal(msg);
+                updateUI();
+                try {
+                    await fetch('/api/messages', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chatId: roomId, message: msg, recipientId: otherUserId }) });
+                } catch (e) { console.error(e); }
+            }
+            
+            async loadMessages(otherUserId) {
+                const roomId = getChatRoomId(this.currentUser.id, otherUserId);
+                socket.emit('join_room', roomId);
+                try {
+                    const res = await fetch(`/api/chats/${otherUserId}?chatId=${roomId}`);
+                    this.chats[roomId] = await res.json();
+                    updateUI();
+                } catch (e) { this.chats[roomId] = []; updateUI(); }
+            }
+            
+            async createUser(n,u,p) { return (await fetch('/api/users', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({name:n, username:u, password:p})})).json(); }
+            async changePassword(p) { const r = await fetch(`/api/users/${this.currentUser.id}`, {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({password:p})}); this.currentUser.mustChangePassword=false; localStorage.setItem('sTalk_user', JSON.stringify(this.currentUser)); return r.json(); }
+            async adminResetPassword(id,p) { return (await fetch('/api/admin/reset-password', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({userId:id, newPassword:p})})).json(); }
+            async deleteUser(id) { await fetch(`/api/users/${id}`, {method:'DELETE'}); this.fetchUsers(); }
+            addMessageToLocal(msg) { const rid = msg.chatId; if(!this.chats[rid]) this.chats[rid]=[]; this.chats[rid].push(msg); }
         }
 
         function getChatRoomId(id1, id2) { return [id1, id2].sort().join('_'); }
-
         const server = new APIClient();
-        let activeChatId = null;
-        let replyContext = null;
-        
+        let activeChatId = null, replyContext = null;
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        let soundEnabled = localStorage.getItem('sTalk_sound') !== 'false'; 
+        let soundEnabled = localStorage.getItem('sTalk_sound') !== 'false';
+
         function playNotificationSound() {
             if (!soundEnabled || audioCtx.state === 'suspended') audioCtx.resume();
             if (!soundEnabled) return;
-            
-            const t = audioCtx.currentTime;
-            const o = audioCtx.createOscillator();
-            const g = audioCtx.createGain();
+            const t = audioCtx.currentTime, o = audioCtx.createOscillator(), g = audioCtx.createGain();
             o.connect(g); g.connect(audioCtx.destination);
             o.type = 'sine'; o.frequency.setValueAtTime(1200, t); o.frequency.exponentialRampToValueAtTime(800, t + 0.1);
             g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.3, t + 0.05); g.gain.exponentialRampToValueAtTime(0.001, t + 1.5);
             o.start(t); o.stop(t + 1.5);
         }
-        
+
         window.addEventListener('load', async () => {
-            // Register Service Worker safely (avoids blob/preview errors)
-            if ('serviceWorker' in navigator) {
-                try {
-                    navigator.serviceWorker.register('/sw.js').catch(err => console.warn("SW Register info:", err));
-                } catch (e) { console.warn("SW skipped"); }
+             // Register SW only if not in preview blob
+            if ('serviceWorker' in navigator && window.location.protocol !== 'blob:') {
+                 try { navigator.serviceWorker.register('/sw.js'); } catch(e){}
             }
-            
-            const isLoggedIn = await server.checkAuth();
-            if (isLoggedIn) enterMainApp(server.currentUser);
+            if (await server.checkAuth()) enterMainApp(server.currentUser);
         });
     </script>
 
@@ -338,410 +261,236 @@
             <img src="logo.svg" class="w-24 h-24 mx-auto mb-6 rounded-[20px] shadow-lg" onerror="this.style.display='none'; document.getElementById('fallback-logo').style.display='block'">
             <div id="fallback-logo" class="hidden w-24 h-24 mx-auto mb-6 rounded-[20px] bg-purple-600"></div>
             <h1 class="text-2xl font-extrabold text-white mb-2">sTalk Login</h1>
-            <input type="text" id="login-user" placeholder="Username" class="w-full p-4 rounded-xl bg-gray-700 text-white border-none focus:ring-2 focus:ring-purple-500 mb-3 outline-none font-semibold">
-            <input type="password" id="login-pass" placeholder="Password" class="w-full p-4 rounded-xl bg-gray-700 text-white border-none focus:ring-2 focus:ring-purple-500 mb-4 outline-none font-semibold">
+            <input type="text" id="login-user" placeholder="Username" class="w-full p-4 rounded-xl bg-gray-700 text-white mb-3 outline-none font-semibold">
+            <input type="password" id="login-pass" placeholder="Password" class="w-full p-4 rounded-xl bg-gray-700 text-white mb-4 outline-none font-semibold">
             <button onclick="appLogin()" class="w-full py-3.5 rounded-xl bg-gradient-to-r from-purple-600 to-blue-500 text-white font-bold shadow-lg active:scale-95 transition-transform">Login</button>
         </div>
     </div>
 
-    <!-- 2. MAIN -->
+    <!-- MAIN APP CONTAINER -->
     <div id="view-main" class="hidden flex-1 flex overflow-hidden relative bg-gray-900 text-white">
         <!-- SIDEBAR -->
         <div id="sidebar" class="w-full md:w-80 lg:w-96 bg-gray-800 border-r border-gray-700 flex flex-col z-10">
-            <div class="p-4 border-b border-gray-700 flex justify-between items-center bg-gray-800">
+            <div class="p-4 border-b border-gray-700 flex justify-between items-center">
                 <div class="flex items-center gap-3 cursor-pointer" onclick="openSettingsModal()">
                     <div id="my-avatar" class="w-10 h-10 rounded-full bg-purple-900 flex items-center justify-center text-purple-300 font-bold overflow-hidden border border-gray-700"></div>
                     <h2 id="my-username" class="font-bold text-white text-lg">User</h2>
                 </div>
                 <div class="flex gap-3">
-                    <button id="admin-btn" onclick="toggleAdminPanel()" class="hidden w-8 h-8 rounded-full bg-red-900 text-red-200 flex items-center justify-center"><i class="fas fa-shield-alt"></i></button>
-                    <button onclick="openSettingsModal()" class="w-8 h-8 rounded-full bg-gray-700 text-gray-300 flex items-center justify-center transition-colors hover:bg-gray-600"><i class="fas fa-cog"></i></button>
+                    <button id="admin-btn" onclick="toggleAdminPanel()" class="hidden w-8 h-8 rounded-full bg-red-900 flex items-center justify-center"><i class="fas fa-shield-alt"></i></button>
+                    <button onclick="openSettingsModal()" class="w-8 h-8 rounded-full bg-gray-700 flex items-center justify-center"><i class="fas fa-cog"></i></button>
                 </div>
             </div>
             <div class="p-3">
-                <div class="bg-gray-700 rounded-lg flex items-center px-3 py-2">
-                    <i class="fas fa-search text-gray-400 mr-2"></i>
-                    <input type="text" placeholder="Search" class="bg-transparent w-full outline-none text-white font-medium">
-                </div>
+                <input type="text" placeholder="Search" class="w-full p-2 bg-gray-700 rounded-lg text-white outline-none">
             </div>
             <div id="user-list" class="flex-1 overflow-y-auto"></div>
         </div>
 
-        <!-- CHAT -->
+        <!-- CHAT INTERFACE -->
         <div id="chat-interface" class="flex-1 bg-gray-900 flex flex-col absolute inset-0 md:static transform translate-x-full md:translate-x-0 transition-transform duration-300 z-20">
-            <!-- FIXED HEADER -->
-            <div id="chat-header" class="bg-gray-800 p-3 border-b border-gray-700 flex items-center justify-between shadow-sm z-30 h-16">
+            <!-- HEADER -->
+            <div id="chat-header" class="bg-gray-800 p-3 border-b border-gray-700 flex items-center justify-between h-16">
                 <div class="flex items-center gap-3">
                     <button onclick="closeChat()" class="md:hidden text-gray-300 p-2"><i class="fas fa-arrow-left text-xl"></i></button>
-                    <div id="chat-header-avatar-container" class="w-10 h-10 rounded-full bg-gray-600 overflow-hidden flex items-center justify-center text-sm font-bold">
-                        <img id="chat-header-avatar" src="" class="w-full h-full object-cover hidden"><span id="chat-header-initials" class="hidden"></span>
+                    <div class="w-10 h-10 rounded-full bg-gray-600 overflow-hidden flex items-center justify-center">
+                        <img id="chat-header-avatar" class="w-full h-full object-cover hidden"><span id="chat-header-initials" class="hidden"></span>
                     </div>
                     <div>
-                        <h3 id="chat-header-name" class="font-bold text-white leading-tight">Name</h3>
-                        <p id="chat-header-status" class="text-xs text-green-500 font-semibold">Online</p>
+                        <h3 id="chat-header-name" class="font-bold text-white">Name</h3>
+                        <p id="chat-header-status" class="text-xs text-green-500">Online</p>
                     </div>
                 </div>
-                <div class="relative">
-                    <button onclick="document.getElementById('chat-menu').classList.toggle('hidden')" class="p-2 text-gray-600 dark:text-gray-300"><i class="fas fa-ellipsis-v"></i></button>
-                    <div id="chat-menu" class="hidden absolute right-0 top-10 w-48 bg-white dark:bg-gray-700 rounded-lg shadow-xl py-1 border dark:border-gray-600 z-40">
-                        <button onclick="deleteCurrentChat()" class="w-full text-left px-4 py-3 text-red-500 hover:bg-gray-100 dark:hover:bg-gray-600 font-medium"><i class="fas fa-trash mr-2"></i> Delete Chat</button>
-                    </div>
-                </div>
+                <button onclick="deleteCurrentChat()" class="text-red-400"><i class="fas fa-trash"></i></button>
             </div>
 
             <!-- SCROLLABLE MESSAGES -->
-            <div id="messages-container" class="flex-1 overflow-y-auto p-4 space-y-3 pb-20 bg-repeat bg-cover bg-center scroll-smooth"></div>
+            <div id="messages-container" class="flex-1 overflow-y-auto p-4 space-y-3 bg-cover bg-center"></div>
 
-            <!-- FIXED INPUT AREA -->
-            <div id="chat-input-area" class="bg-gray-800 p-3 flex items-end gap-2 border-t border-gray-700 z-30">
-                <!-- Reply Preview -->
-                <div id="reply-preview" class="hidden absolute bottom-full left-0 w-full bg-gray-800 p-2 border-l-4 border-purple-500 flex justify-between items-center border-t border-gray-700">
-                    <div class="pl-2 overflow-hidden">
-                        <p class="text-xs text-purple-500 font-bold">Replying to...</p>
-                        <p id="reply-text" class="text-sm text-gray-300 truncate">Message</p>
-                    </div>
-                    <button onclick="cancelReply()" class="p-2 text-gray-500"><i class="fas fa-times"></i></button>
-                </div>
-
-                <button onclick="triggerFileUpload()" class="p-3 text-gray-500 hover:text-purple-500 transition-colors"><i class="fas fa-paperclip text-xl"></i></button>
+            <!-- INPUT AREA -->
+            <div id="chat-input-area" class="bg-gray-800 p-3 flex items-end gap-2 border-t border-gray-700">
+                <button onclick="document.getElementById('file-input').click()" class="p-3 text-gray-400 hover:text-purple-500"><i class="fas fa-paperclip"></i></button>
                 <input type="file" id="file-input" class="hidden" multiple onchange="handleFiles(this.files)">
-                <div class="flex-1 bg-gray-700 rounded-2xl px-4 py-2 min-h-[45px] flex items-center">
-                    <input type="text" id="msg-input" placeholder="Message" class="w-full bg-transparent outline-none text-white font-medium" onkeypress="if(event.key === 'Enter') sendMsg()">
-                </div>
-                <button onclick="sendMsg()" class="p-3 bg-purple-600 text-white rounded-full shadow-lg hover:opacity-90 active:scale-90 transition-transform"><i class="fas fa-paper-plane"></i></button>
+                <input type="text" id="msg-input" placeholder="Message" class="flex-1 bg-gray-700 rounded-2xl px-4 py-2 outline-none text-white" onkeypress="if(event.key==='Enter') sendMsg()">
+                <button onclick="sendMsg()" class="p-3 bg-purple-600 text-white rounded-full"><i class="fas fa-paper-plane"></i></button>
             </div>
         </div>
     </div>
 
-    <!-- ADMIN PANEL -->
-    <div id="admin-panel" class="hidden fixed inset-0 z-50 bg-gray-900 overflow-y-auto">
-        <div class="bg-gray-800 p-4 shadow-md flex justify-between sticky top-0 z-10">
-            <h2 class="text-xl font-bold text-red-500">Admin Console</h2>
-            <button onclick="toggleAdminPanel()" class="text-gray-500"><i class="fas fa-times text-2xl"></i></button>
-        </div>
-        <div class="p-4 max-w-4xl mx-auto">
-            <div class="bg-gray-800 rounded-xl shadow p-6 mb-6 border border-gray-700">
-                <h3 class="font-bold mb-4 text-white text-lg border-b border-gray-700 pb-2">Create New User</h3>
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                    <input type="text" id="new-user-name" placeholder="Full Name" class="p-3 bg-gray-700 rounded-lg text-white">
-                    <input type="text" id="new-user-username" placeholder="Username" class="p-3 bg-gray-700 rounded-lg text-white">
-                    <input type="text" id="new-user-pass" placeholder="Temp Password" class="p-3 bg-gray-700 rounded-lg text-white">
-                </div>
-                <button onclick="adminCreateUser()" class="bg-green-600 text-white px-6 py-2 rounded-lg font-bold hover:bg-green-500">Create User</button>
-            </div>
-            <div class="bg-gray-800 rounded-xl shadow p-6 mb-6 border border-gray-700">
-                <h3 class="font-bold mb-4 text-white">Existing Users</h3>
-                <div id="admin-user-list" class="space-y-3"></div>
-            </div>
-            <div class="bg-gray-800 rounded-xl shadow p-6 border border-gray-700">
-                <h3 class="font-bold mb-4 text-white">Global Actions</h3>
-                <button class="w-full bg-red-900 text-red-200 py-3 rounded-lg mb-2 font-bold" onclick="if(confirm('Clear ALL chats?')){server.fetch('/api/admin/clear-chats', {method:'POST'})}">Clear All System Chats</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- SETTINGS & MODALS -->
+    <!-- SETTINGS & CROPPER -->
     <div id="settings-modal" class="hidden fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
         <div class="bg-gray-800 w-full max-w-md rounded-2xl overflow-hidden flex flex-col max-h-[90vh] border border-gray-700">
-            <div class="p-4 border-b border-gray-700 flex justify-between items-center">
+            <div class="p-4 border-b border-gray-700 flex justify-between">
                 <h3 class="text-lg font-bold text-white">Settings</h3>
-                <button onclick="closeSettingsModal()" class="text-gray-500 w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-700"><i class="fas fa-times"></i></button>
+                <button onclick="closeSettingsModal()"><i class="fas fa-times text-gray-400"></i></button>
             </div>
             <div class="p-6 overflow-y-auto">
-                <div class="flex flex-col items-center mb-8">
-                    <div class="relative group cursor-pointer" onclick="document.getElementById('avatar-upload').click()">
-                        <div id="settings-avatar" class="w-24 h-24 rounded-full bg-purple-900 flex items-center justify-center text-purple-300 text-2xl font-bold overflow-hidden border-4 border-gray-700"></div>
+                <div class="flex flex-col items-center mb-6">
+                    <div class="relative cursor-pointer" onclick="document.getElementById('avatar-upload').click()">
+                        <div id="settings-avatar" class="w-24 h-24 rounded-full bg-purple-900 border-4 border-gray-700 overflow-hidden flex items-center justify-center"></div>
                     </div>
-                    <h3 id="settings-name" class="mt-3 font-bold text-xl text-white">User</h3>
-                    <button onclick="document.getElementById('avatar-upload').click()" class="text-purple-400 text-sm font-bold mt-1">Change Profile Photo</button>
+                    <button onclick="document.getElementById('avatar-upload').click()" class="text-purple-400 text-sm font-bold mt-2">Change Profile Photo</button>
                 </div>
                 <div class="mb-6">
-                    <h4 class="font-bold text-white mb-3">Color Theme</h4>
-                    <div class="grid grid-cols-4 gap-3" id="theme-selector"></div>
-                </div>
-                <div class="mb-6">
-                    <h4 class="font-bold text-white mb-3">Chat Wallpaper</h4>
-                    <div class="flex gap-3">
-                        <button onclick="document.getElementById('bg-upload').click()" class="flex-1 py-2 bg-gray-700 rounded-lg text-sm font-bold text-white hover:bg-gray-600">Upload</button>
-                        <button onclick="removeWallpaper()" class="px-3 py-2 bg-red-900 text-red-200 rounded-lg text-sm font-bold"><i class="fas fa-trash"></i></button>
-                    </div>
-                    <input type="file" id="bg-upload" class="hidden" accept="image/*" onchange="saveWallpaper(this)">
-                </div>
-                <div class="space-y-6">
-                    <div class="flex items-center justify-between">
-                        <span class="font-bold text-white">Sound Effects</span>
-                        <input type="checkbox" id="sound-toggle" checked class="toggle-checkbox" onclick="toggleSound()">
-                    </div>
-                    <!-- Notifications Toggle Added -->
-                    <div class="flex items-center justify-between">
+                     <div class="flex justify-between items-center">
                         <span class="font-bold text-white">Push Notifications</span>
-                        <!-- Changed to button for explicit user action triggering permission prompt -->
-                        <button onclick="server.registerPush()" class="bg-purple-600 px-3 py-1 rounded text-sm font-bold hover:bg-purple-500 transition">Enable</button>
+                        <button onclick="server.registerPush()" class="bg-purple-600 px-3 py-1 rounded text-sm font-bold">Enable</button>
                     </div>
                 </div>
-                <div class="border-t border-gray-700 my-6"></div>
-                <div class="space-y-3">
-                    <button onclick="openChangePwModal()" class="w-full p-3 rounded-xl bg-gray-700 text-left font-bold text-white">Change Password</button>
-                    <button onclick="logout()" class="w-full p-3 rounded-xl bg-red-900 text-red-200 text-left font-bold">Log Out</button>
+                <button onclick="logout()" class="w-full p-3 rounded-xl bg-red-900 text-red-200 font-bold">Log Out</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- CROPPER -->
+    <div id="cropper-modal" class="hidden fixed inset-0 z-[70] bg-black/90 flex items-center justify-center p-4">
+        <div class="bg-white dark:bg-gray-800 w-full max-w-lg rounded-2xl overflow-hidden">
+            <div class="p-4 border-b border-gray-700 flex justify-between"><h3 class="text-white font-bold">Adjust Photo</h3><button onclick="closeCropper()" class="text-white"><i class="fas fa-times"></i></button></div>
+            <div class="p-4">
+                <div class="relative w-full h-64 bg-black rounded-lg overflow-hidden" id="crop-container" 
+                     ontouchstart="startDrag(event)" ontouchmove="drag(event)" ontouchend="endDrag()" 
+                     onmousedown="startDrag(event)" onmousemove="drag(event)" onmouseup="endDrag()">
+                    <canvas id="crop-canvas" class="absolute top-0 left-0"></canvas>
+                    <div class="absolute inset-0 pointer-events-none border-[50px] border-black/60 rounded-full"></div>
                 </div>
+                <input type="range" id="zoom-slider" min="0.5" max="3" step="0.1" value="1" class="w-full mt-4" oninput="updateZoom(this.value)">
+                <button onclick="saveCrop()" class="w-full mt-4 bg-purple-600 text-white py-3 rounded-lg font-bold">Save</button>
             </div>
         </div>
     </div>
-
-    <!-- PASSWORD RESET PROMPT (For Admin) -->
-    <div id="admin-pw-reset-modal" class="hidden fixed inset-0 z-[60] bg-black/80 flex items-center justify-center p-4">
-        <div class="bg-gray-800 p-6 rounded-2xl shadow-xl w-full max-w-sm border border-gray-700">
-            <h3 class="font-bold text-lg mb-4 text-white">Reset User Password</h3>
-            <p class="text-sm text-gray-400 mb-4">Enter a new temporary password (4-8 chars).</p>
-            <input type="text" id="admin-new-pw" placeholder="Temp Password" class="w-full p-3 mb-4 rounded-lg bg-gray-700 text-white outline-none">
-            <div class="flex gap-3">
-                <button onclick="document.getElementById('admin-pw-reset-modal').classList.add('hidden')" class="flex-1 py-2 bg-gray-700 text-white rounded-lg font-bold">Cancel</button>
-                <button onclick="confirmAdminReset()" class="flex-1 py-2 bg-red-600 text-white rounded-lg font-bold">Reset</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- USER CHANGE PW MODAL -->
-    <div id="change-pw-modal" class="hidden fixed inset-0 z-[60] bg-black/80 flex items-center justify-center p-4">
-        <div class="bg-gray-800 p-6 rounded-2xl shadow-xl w-full max-w-sm border border-gray-700">
-            <h3 class="font-bold text-lg mb-4 text-white">Change Password</h3>
-            <input type="password" id="cp-new" placeholder="New Password" class="w-full p-3 mb-3 rounded-lg bg-gray-700 text-white outline-none">
-            <button onclick="saveNewPassword()" class="w-full py-2 bg-purple-600 text-white rounded-lg font-bold">Save</button>
-        </div>
-    </div>
-
     <input type="file" id="avatar-upload" class="hidden" accept="image/*" onchange="initCropper(this)">
 
-    <!-- ===================== LOGIC ===================== -->
     <script>
-        // --- THEMES ---
-        const themes = [
-            { id: 1, name: "Electric Blue", primary: "#3B82F6", secondary: "#2563EB", darkBg: "#0F172A" },
-            { id: 2, name: "Neon Purple", primary: "#8B5CF6", secondary: "#7C3AED", darkBg: "#1E1E1E" },
-            { id: 3, name: "Teal Cyan", primary: "#06B6D4", secondary: "#0891B2", darkBg: "#111827" },
-            { id: 4, name: "Lime Green", primary: "#A3E635", secondary: "#65A30D", darkBg: "#1F2937" }
-        ];
-        let currentThemeId = localStorage.getItem('sTalk_theme') ? parseInt(localStorage.getItem('sTalk_theme')) : 2;
-
-        function applyTheme(id) {
-            const theme = themes.find(t => t.id === id) || themes[1];
-            currentThemeId = id;
-            localStorage.setItem('sTalk_theme', id);
-            document.documentElement.style.setProperty('--theme-primary', theme.primary);
-            document.documentElement.style.setProperty('--theme-secondary', theme.secondary);
-            document.documentElement.style.setProperty('--theme-dark-bg', theme.darkBg);
-            renderThemeSelector();
-        }
-
-        function renderThemeSelector() {
-            const container = document.getElementById('theme-selector');
-            if(!container) return;
-            container.innerHTML = themes.map(t => `
-                <button onclick="applyTheme(${t.id})" class="theme-swatch w-10 h-10 rounded-full shadow-sm ring-2 ring-offset-2 ring-offset-gray-800 ${currentThemeId === t.id ? 'ring-white' : 'ring-transparent'}" style="background-color: ${t.primary};"></button>
-            `).join('');
-        }
-        applyTheme(currentThemeId);
-
-        // --- AUTH & APP ---
+        // APP LOGIC
         function appLogin() {
-            const u = document.getElementById('login-user').value;
-            const p = document.getElementById('login-pass').value;
-            server.login(u, p).then(user => {
-                if (user.mustChangePassword) {
-                    alert("Security: Please change your password.");
-                    enterMainApp(user);
-                    openChangePwModal();
-                } else {
-                    enterMainApp(user);
-                }
-            }).catch(err => alert(err));
+            const u = document.getElementById('login-user').value, p = document.getElementById('login-pass').value;
+            server.login(u, p).then(user => enterMainApp(user)).catch(e => alert(e));
         }
-
         function enterMainApp(user) {
             document.getElementById('view-login').classList.add('hidden');
             document.getElementById('view-main').classList.remove('hidden');
             document.getElementById('view-main').classList.add('flex');
-            if (audioCtx.state === 'suspended') audioCtx.resume();
             updateMyProfileUI();
-            applyWallpaper();
             if(user.role === 'admin') document.getElementById('admin-btn').classList.remove('hidden');
-            server.fetchUsers(); // Trigger load
-            
-            // Check notification permission for toggle
-            if ("Notification" in window && Notification.permission === "granted") {
-                // document.getElementById('notif-toggle').checked = true; // Manual toggle removed for button
-            }
+        }
+        function logout() { localStorage.removeItem('sTalk_user'); window.location.reload(); }
+        
+        // CROPPER
+        let cropCanvas, cropCtx, cropImg, cropState = { scale: 1, offsetX: 0, offsetY: 0, isDragging: false };
+        function initCropper(input) {
+            if(!input.files[0]) return;
+            const reader = new FileReader();
+            reader.onload = e => {
+                cropImg = new Image(); cropImg.src = e.target.result;
+                cropImg.onload = () => {
+                    document.getElementById('cropper-modal').classList.remove('hidden');
+                    document.getElementById('settings-modal').classList.add('hidden');
+                    cropCanvas = document.getElementById('crop-canvas'); 
+                    cropCtx = cropCanvas.getContext('2d');
+                    const c = document.getElementById('crop-container');
+                    cropCanvas.width = c.offsetWidth; cropCanvas.height = c.offsetHeight;
+                    cropState = { scale: 1, offsetX: 0, offsetY: 0, isDragging: false };
+                    drawCropper();
+                }
+            };
+            reader.readAsDataURL(input.files[0]);
+            input.value = "";
+        }
+        function closeCropper() { document.getElementById('cropper-modal').classList.add('hidden'); document.getElementById('settings-modal').classList.remove('hidden'); }
+        function drawCropper() {
+            cropCtx.clearRect(0,0,cropCanvas.width,cropCanvas.height);
+            const w = cropImg.width*cropState.scale, h = cropImg.height*cropState.scale;
+            const x = (cropCanvas.width-w)/2 + cropState.offsetX, y = (cropCanvas.height-h)/2 + cropState.offsetY;
+            cropCtx.drawImage(cropImg, x, y, w, h);
+        }
+        function updateZoom(v) { cropState.scale = parseFloat(v); drawCropper(); }
+        function startDrag(e) { cropState.isDragging=true; const p = e.touches?e.touches[0]:e; cropState.sx = p.clientX-cropState.offsetX; cropState.sy = p.clientY-cropState.offsetY; }
+        function drag(e) { if(!cropState.isDragging)return; e.preventDefault(); const p = e.touches?e.touches[0]:e; cropState.offsetX = p.clientX-cropState.sx; cropState.offsetY = p.clientY-cropState.sy; drawCropper(); }
+        function endDrag() { cropState.isDragging=false; }
+        function saveCrop() {
+            const sc = document.createElement('canvas'); sc.width=200; sc.height=200;
+            sc.getContext('2d').drawImage(cropCanvas, (cropCanvas.width/2-100), (cropCanvas.height/2-100), 200, 200, 0, 0, 200, 200);
+            // Send to server
+            server.updateUser({ avatar: sc.toDataURL() });
+            closeCropper();
         }
 
         function updateMyProfileUI() {
-            const user = server.currentUser;
-            document.getElementById('my-username').innerText = user.name;
-            document.getElementById('my-avatar').innerHTML = renderAvatar(user, "w-full h-full");
-            document.getElementById('settings-name').innerText = user.name;
-            document.getElementById('settings-avatar').innerHTML = renderAvatar(user, "w-full h-full", "text-3xl");
-        }
-
-        function logout() { 
-            localStorage.removeItem('sTalk_user');
-            window.location.reload(); 
-        }
-
-        // --- ADMIN RESET ---
-        let targetResetUserId = null;
-        function promptAdminReset(userId) {
-            targetResetUserId = userId;
-            document.getElementById('admin-pw-reset-modal').classList.remove('hidden');
-        }
-        function confirmAdminReset() {
-            const pw = document.getElementById('admin-new-pw').value;
-            if(pw.length < 4 || pw.length > 8) return alert("Password must be 4-8 chars");
-            server.adminResetPassword(targetResetUserId, pw).then(res => {
-                alert("Password reset successfully.");
-                document.getElementById('admin-pw-reset-modal').classList.add('hidden');
-                document.getElementById('admin-new-pw').value = "";
-            });
-        }
-
-        // --- WALLPAPER ---
-        function saveWallpaper(input) {
-            if(!input.files[0]) return;
-            const reader = new FileReader();
-            reader.onload = (e) => { localStorage.setItem('sTalk_bg', e.target.result); applyWallpaper(); };
-            reader.readAsDataURL(input.files[0]);
-        }
-        function removeWallpaper() { localStorage.removeItem('sTalk_bg'); applyWallpaper(); }
-        function applyWallpaper() {
-            const bg = localStorage.getItem('sTalk_bg');
-            const c = document.getElementById('messages-container');
-            if (!c) return;
-            if(bg) { c.style.backgroundImage = `url('${bg}')`; c.style.backgroundSize = 'cover'; }
-            else { c.style.backgroundImage = "url('https://i.pinimg.com/originals/85/ec/df/85ecdf1c3611ecc9b7fa85282d9526e0.png')"; c.style.backgroundSize = 'auto'; }
-        }
-
-        // --- HELPERS ---
-        function getInitials(name) { return name ? name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() : '?'; }
-        function renderAvatar(user, sizeClass, fontSize="text-base") {
-            if (user.avatar && user.avatar.length > 10) return `<img src="${user.avatar}" class="${sizeClass} object-cover w-full h-full">`;
-            return `<div class="${sizeClass} flex items-center justify-center ${fontSize}">${getInitials(user.name)}</div>`;
-        }
-        
-        // --- SOUND & NOTIFICATIONS ---
-        function toggleSound() {
-            soundEnabled = !soundEnabled;
-            localStorage.setItem('sTalk_sound', soundEnabled);
-        }
-        
-        function toggleNotifications() {
-            // Replaced by direct API call in button
-        }
-
-        // --- ADMIN ---
-        function adminCreateUser() {
-            const n = document.getElementById('new-user-name').value;
-            const u = document.getElementById('new-user-username').value;
-            const p = document.getElementById('new-user-pass').value;
-            if(!n || !u || !p) return alert("Fill all fields");
-            server.createUser(n, u, p).then(res => {
-                if(res.success) alert("User created!");
-                else alert(res.message);
-            });
+            const u = server.currentUser;
+            document.getElementById('my-username').innerText = u.name;
+            document.getElementById('my-avatar').innerHTML = renderAvatar(u, "w-full h-full");
+            document.getElementById('settings-name').innerText = u.name;
+            document.getElementById('settings-avatar').innerHTML = renderAvatar(u, "w-full h-full", "text-3xl");
         }
 
         function renderUserList() {
             const list = document.getElementById('user-list');
             const others = server.users.filter(u => u.id !== server.currentUser.id);
-            list.innerHTML = others.map(u => `
-                <div onclick="openChat(${u.id})" class="p-4 flex items-center gap-3 hover:bg-gray-800 cursor-pointer border-b border-gray-700">
+            
+            list.innerHTML = others.map(u => {
+                // UNREAD COUNT LOGIC
+                const unreadCount = (server.currentUser.unread && server.currentUser.unread[u.id]) || 0;
+                const badge = unreadCount > 0 ? 
+                    `<div class="unread-badge absolute -top-1 -right-1 bg-red-600 text-white text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center shadow-md">${unreadCount}</div>` : '';
+                const nameClass = unreadCount > 0 ? 'font-extrabold text-white italic' : 'font-semibold text-gray-300';
+                
+                return `
+                <div onclick="openChat(${u.id})" class="p-4 flex items-center gap-3 hover:bg-gray-800 cursor-pointer border-b border-gray-700 transition-colors">
                     <div class="relative w-12 h-12 rounded-full bg-gray-700 flex items-center justify-center font-bold border border-gray-600">
                         ${renderAvatar(u, "w-full h-full", "text-lg")}
                         ${u.status === 'online' ? '<div class="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-gray-800"></div>' : ''}
+                        ${badge}
                     </div>
                     <div class="flex-1">
-                        <div class="flex justify-between"><h3 class="font-bold text-white">${u.name}</h3></div>
-                        <p class="text-sm text-gray-400">Tap to chat</p>
+                        <div class="flex justify-between"><h3 class="${nameClass}">${u.name}</h3></div>
+                        <p class="text-sm text-gray-500 truncate">${unreadCount > 0 ? 'New messages' : 'Tap to chat'}</p>
                     </div>
-                </div>
-            `).join('');
-
-            // Admin List
-            const adList = document.getElementById('admin-user-list');
-            adList.innerHTML = server.users.map(u => `
-                <div class="flex justify-between p-3 bg-gray-700 rounded-lg">
-                    <div class="flex items-center gap-2">
-                        <div class="w-8 h-8 rounded-full bg-gray-600 flex items-center justify-center text-xs font-bold overflow-hidden">${renderAvatar(u, "w-full h-full", "text-xs")}</div>
-                        <div><span class="text-white font-bold block">${u.name}</span><span class="text-xs text-gray-400">${u.role}</span></div>
-                    </div>
-                    <div class="flex gap-2">
-                        <button onclick="promptAdminReset(${u.id})" class="text-xs bg-blue-900 text-blue-200 px-2 py-1 rounded">Reset PW</button>
-                        ${u.id !== server.currentUser.id ? `<button onclick="if(confirm('Delete user?')){server.deleteUser(${u.id})}" class="text-xs bg-red-900 text-red-200 px-2 py-1 rounded">Delete</button>` : ''}
-                    </div>
-                </div>
-            `).join('');
+                </div>`;
+            }).join('');
         }
-
-        // --- UI ACTIONS ---
-        function openSettingsModal() { document.getElementById('settings-modal').classList.remove('hidden'); renderThemeSelector(); }
+        
+        // UI & Chat
+        function openSettingsModal() { document.getElementById('settings-modal').classList.remove('hidden'); }
         function closeSettingsModal() { document.getElementById('settings-modal').classList.add('hidden'); }
         function toggleAdminPanel() { document.getElementById('admin-panel').classList.toggle('hidden'); }
-        function openChangePwModal() { document.getElementById('change-pw-modal').classList.remove('hidden'); }
-        function saveNewPassword() {
-            const p = document.getElementById('cp-new').value;
-            if(p.length < 4) return alert("Too short");
-            server.changePassword(p).then(() => {
-                alert("Password changed!");
-                document.getElementById('change-pw-modal').classList.add('hidden');
-            });
-        }
-
-        // --- CHAT ---
+        
         function openChat(userId) {
             activeChatId = userId;
-            const user = server.users.find(u => u.id === userId);
-            document.getElementById('chat-header-name').innerText = user.name;
-            const img = document.getElementById('chat-header-avatar');
-            const txt = document.getElementById('chat-header-initials');
-            if(user.avatar && user.avatar.length > 10) { img.src=user.avatar; img.classList.remove('hidden'); txt.classList.add('hidden'); }
-            else { img.classList.add('hidden'); txt.classList.remove('hidden'); txt.innerText = getInitials(user.name); }
+            const u = server.users.find(u => u.id === userId);
+            document.getElementById('chat-header-name').innerText = u.name;
+            const img = document.getElementById('chat-header-avatar'), txt = document.getElementById('chat-header-initials');
+            if(u.avatar && u.avatar.length > 10) { img.src=u.avatar; img.classList.remove('hidden'); txt.classList.add('hidden'); }
+            else { img.classList.add('hidden'); txt.classList.remove('hidden'); txt.innerText = getInitials(u.name); }
             
-            // MOBILE SLIDE
             if(window.innerWidth < 768) document.getElementById('chat-interface').classList.remove('translate-x-full');
             
             server.loadMessages(userId);
-            applyWallpaper();
+            server.markRead(userId); // Clear unread on open
         }
-
+        
         function closeChat() {
             activeChatId = null;
             if(window.innerWidth < 768) document.getElementById('chat-interface').classList.add('translate-x-full');
         }
-
-        function updateUI() {
-            if (!activeChatId) return;
-            const roomId = getChatRoomId(server.currentUser.id, activeChatId);
-            const msgs = server.chats[roomId] || [];
-            const container = document.getElementById('messages-container');
-            
-            container.innerHTML = msgs.map(msg => {
-                const isSelf = msg.senderId === server.currentUser.id;
-                const align = isSelf ? 'justify-end' : 'justify-start';
-                const bg = isSelf ? 'msg-bubble-self' : 'msg-bubble-other';
-                let tick = '<i class="fas fa-check text-gray-400 text-[10px]"></i>';
-                if(msg.status === 'delivered') tick = '<i class="fas fa-check-double text-gray-400 text-[10px]"></i>';
-                
-                let content = `<p class="text-sm md:text-base">${msg.text}</p>`;
-                if(msg.type === 'image') content = `<img src="${msg.fileData}" class="max-w-[200px] rounded-lg mb-1">`;
-                
-                return `<div class="flex ${align}"><div class="${bg} p-3 max-w-[75%] shadow-sm relative">${content}<div class="text-[10px] flex justify-end gap-1 opacity-70 mt-1"><span>${new Date(msg.sentAt).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</span>${isSelf?tick:''}</div></div></div>`;
-            }).join('');
-            container.scrollTop = container.scrollHeight;
-        }
-
+        
         function sendMsg() {
-            const input = document.getElementById('msg-input');
-            const txt = input.value.trim();
-            if(!txt) return;
-            server.sendMessage(activeChatId, txt).then(() => { input.value = ''; });
+            const i = document.getElementById('msg-input'), v = i.value.trim();
+            if(v) { server.sendMessage(activeChatId, v).then(()=>i.value=''); }
         }
+        
+        function handleFiles(files) {
+            Array.from(files).forEach(f => {
+                const r = new FileReader();
+                r.onload = e => server.sendMessage(activeChatId, "", f.type.startsWith('image')?'image':f.type.startsWith('video')?'video':'file', e.target.result);
+                r.readAsDataURL(f);
+            });
+        }
+        
+        function renderAvatar(u, c, f="text-base") {
+            if(u.avatar && u.avatar.length > 10) return `<img src="${u.avatar}" class="${c} object-cover w-full h-full">`;
+            return `<div class="${c} flex items-center justify-center ${f}">${getInitials(u.name)}</div>`;
+        }
+        function getInitials(n) { return n.split(' ').map(w=>w[0]).join('').substring(0,2).toUpperCase(); }
     </script>
 </body>
 </html>

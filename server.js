@@ -18,12 +18,13 @@ const VAPID_FILE = path.join(__dirname, 'vapid.json');
 
 // Middleware
 app.use(cors());
-app.use(express.json({ limit: '50mb' })); // Allow large image uploads
+app.use(express.json({ limit: '50mb' })); // Increased limit for base64 images
 app.use(express.static(path.join(__dirname, 'public')));
 
 // --- VAPID KEYS (Push Notifications) ---
 let vapidKeys = { publicKey: '', privateKey: '' };
 
+// Generate or Load Keys
 if (fs.existsSync(VAPID_FILE)) {
     vapidKeys = JSON.parse(fs.readFileSync(VAPID_FILE));
 } else {
@@ -38,7 +39,7 @@ webpush.setVapidDetails(
     vapidKeys.privateKey
 );
 
-// --- DATABASE SYSTEM ---
+// --- DATABASE ---
 let db = {
     users: [
         { 
@@ -50,49 +51,49 @@ let db = {
             role: "admin", 
             mustChangePassword: false, 
             status: "offline",
-            unread: {} // Store unread counts { senderId: count }
+            unread: {} 
         }
     ],
     chats: {},
-    subscriptions: {} // { userId: [subscriptionObject, ...] }
+    subscriptions: {} // Map userId -> [subscription]
 };
 
-// Load DB
 if (fs.existsSync(DB_FILE)) {
     try {
         const data = fs.readFileSync(DB_FILE);
-        const loaded = JSON.parse(data);
-        // Merge to ensure structure structure exists
-        db = { ...db, ...loaded };
-    } catch (e) { console.error("Error loading DB, starting fresh."); }
+        db = { ...db, ...JSON.parse(data) };
+    } catch (e) { console.error("DB Load Error, starting fresh."); }
 }
 
 function saveDB() {
     fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2));
 }
 
-// --- API ROUTES ---
+// --- ROUTES ---
 
-// Get VAPID Key
+// Push: Get Public Key
 app.get('/api/push/key', (req, res) => {
     res.json({ publicKey: vapidKeys.publicKey });
 });
 
-// Subscribe to Push
+// Push: Subscribe
 app.post('/api/push/subscribe', (req, res) => {
     const { userId, subscription } = req.body;
+    if (!userId || !subscription || !subscription.endpoint) return res.status(400).json({error: "Invalid data"});
+
     if (!db.subscriptions[userId]) db.subscriptions[userId] = [];
     
-    // Add if not exists
-    const exists = db.subscriptions[userId].find(s => s.endpoint === subscription.endpoint);
-    if (!exists) {
+    // Prevent duplicates
+    const existing = db.subscriptions[userId].findIndex(s => s.endpoint === subscription.endpoint);
+    if (existing === -1) {
         db.subscriptions[userId].push(subscription);
         saveDB();
     }
+    
     res.json({ success: true });
 });
 
-// Login
+// Auth: Login
 app.post('/api/login', (req, res) => {
     const { username, password } = req.body;
     const user = db.users.find(u => u.username.toLowerCase() === username.toLowerCase() && u.password === password);
@@ -108,7 +109,7 @@ app.post('/api/login', (req, res) => {
     }
 });
 
-// Create User
+// Users: Create
 app.post('/api/users', (req, res) => {
     const { name, username, password } = req.body;
     if (db.users.find(u => u.username.toLowerCase() === username.toLowerCase())) {
@@ -130,29 +131,13 @@ app.post('/api/users', (req, res) => {
     res.json({ success: true, user: newUser });
 });
 
-// Get Users (With Unread Counts)
+// Users: List
 app.get('/api/users', (req, res) => {
-    // Ideally we filter this per requester, but for simplicity we send safe objects
-    // The client filters 'unread' counts relevant to themselves
     const safeUsers = db.users.map(u => ({...u, password: ""}));
     res.json(safeUsers);
 });
 
-// Clear Unread
-app.post('/api/chats/read', (req, res) => {
-    const { userId, senderId } = req.body;
-    const user = db.users.find(u => u.id === userId);
-    if (user && user.unread) {
-        user.unread[senderId] = 0;
-        saveDB();
-        // Notify user their unread count changed
-        // In a real app we'd send this only to the specific socket
-        io.emit('users_update', db.users.map(u => ({...u, password: ""}))); 
-    }
-    res.json({ success: true });
-});
-
-// Update User
+// Users: Update (Avatar/Password)
 app.put('/api/users/:id', (req, res) => {
     const userId = parseInt(req.params.id);
     const userIdx = db.users.findIndex(u => u.id === userId);
@@ -171,20 +156,35 @@ app.put('/api/users/:id', (req, res) => {
     }
 });
 
+// Users: Delete
 app.delete('/api/users/:id', (req, res) => {
     const id = parseInt(req.params.id);
     db.users = db.users.filter(u => u.id !== id);
+    delete db.subscriptions[id]; // Clean up subs
     saveDB();
     io.emit('users_update', db.users.map(u => ({...u, password: ""})));
     res.json({ success: true });
 });
 
+// Chats: Get History
 app.get('/api/chats/:userId', (req, res) => {
     const chatId = req.query.chatId;
     res.json(db.chats[chatId] || []);
 });
 
-// Send Message
+// Chats: Read
+app.post('/api/chats/read', (req, res) => {
+    const { userId, senderId } = req.body;
+    const user = db.users.find(u => u.id === userId);
+    if (user && user.unread) {
+        user.unread[senderId] = 0;
+        saveDB();
+        io.emit('users_update', db.users.map(u => ({...u, password: ""}))); 
+    }
+    res.json({ success: true });
+});
+
+// Chats: Send Message & Push Notification
 app.post('/api/messages', (req, res) => {
     const { chatId, message, recipientId } = req.body;
     if (!db.chats[chatId]) db.chats[chatId] = [];
@@ -194,7 +194,7 @@ app.post('/api/messages', (req, res) => {
     
     db.chats[chatId].push(message);
 
-    // Increment unread count for recipient
+    // Update Unread
     const recipient = db.users.find(u => u.id === recipientId);
     if (recipient) {
         if (!recipient.unread) recipient.unread = {};
@@ -204,24 +204,30 @@ app.post('/api/messages', (req, res) => {
     saveDB();
     
     io.to(chatId).emit('message_received', message);
-    
-    // Trigger global update to show unread count badge immediately
     io.emit('users_update', db.users.map(u => ({...u, password: ""})));
 
-    // SEND PUSH NOTIFICATION
-    if (db.subscriptions[recipientId]) {
+    // --- PUSH NOTIFICATION LOGIC ---
+    if (db.subscriptions[recipientId] && db.subscriptions[recipientId].length > 0) {
         const sender = db.users.find(u => u.id === message.senderId);
+        const senderName = sender ? sender.name : "Someone";
+        
         const payload = JSON.stringify({
-            title: sender ? sender.name : 'New Message',
-            body: message.text || 'Sent a file',
-            icon: 'logo.svg',
-            url: '/'
+            title: `New message from ${senderName}`,
+            body: message.text || (message.type === 'image' ? 'Sent an image' : 'Sent a file'),
+            icon: '/logo.svg', // Ensure this path is correct in public/
+            url: '/', // Open app root
+            data: { chatId: chatId, senderId: message.senderId }
         });
 
-        db.subscriptions[recipientId].forEach(sub => {
+        // Send to all recipient's devices
+        db.subscriptions[recipientId].forEach((sub, index) => {
             webpush.sendNotification(sub, payload).catch(err => {
-                console.error("Push failed", err);
-                // Optionally remove dead subscription here
+                // 410/404 means subscription is gone/expired
+                if (err.statusCode === 410 || err.statusCode === 404) {
+                    db.subscriptions[recipientId].splice(index, 1);
+                    saveDB();
+                }
+                console.error("Push Error:", err.statusCode);
             });
         });
     }
@@ -229,6 +235,7 @@ app.post('/api/messages', (req, res) => {
     res.json({ success: true, message });
 });
 
+// Admin: Reset PW
 app.post('/api/admin/reset-password', (req, res) => {
     const { userId, newPassword } = req.body;
     const user = db.users.find(u => u.id === parseInt(userId));
@@ -242,19 +249,22 @@ app.post('/api/admin/reset-password', (req, res) => {
     }
 });
 
+// Admin: Clear
 app.post('/api/admin/clear-chats', (req, res) => {
     db.chats = {};
-    db.users.forEach(u => u.unread = {}); // Clear unread too
+    db.users.forEach(u => u.unread = {});
     saveDB();
     io.emit('chats_cleared');
     io.emit('users_update', db.users.map(u => ({...u, password: ""})));
     res.json({success: true});
 });
 
+// Socket
 io.on('connection', (socket) => {
     socket.on('join_room', (roomId) => socket.join(roomId));
 });
 
+// SPA Fallback
 app.get('*', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
