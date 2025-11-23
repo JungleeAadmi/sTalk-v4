@@ -8,6 +8,7 @@ A Progressive Web App (PWA) 100% made by AI, no human coding involved and its pu
 
 ## ✨ Features
 🔔 Multi-Device Push: Notifications ring on all your devices (iOS, Android, Desktop) simultaneously.
+ - ***please note that your server/lxc container time has to same as your local time to make this push notification work***
 
 🎙️ Voice Notes: Record and send audio messages directly.
 
