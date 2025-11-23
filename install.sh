@@ -8,7 +8,7 @@ NC='\033[0m'
 
 TARGET_DIR="/opt/stalk"
 
-echo -e "${GREEN}🚀 sTalk v4 Auto-Installer${NC}"
+echo -e "${GREEN}🚀 sTalk v4.1 Auto-Installer${NC}"
 
 # 1. Check Root
 if [ "$EUID" -ne 0 ]; then
@@ -16,9 +16,11 @@ if [ "$EUID" -ne 0 ]; then
   exit
 fi
 
-# 2. System Updates
-echo -e "${YELLOW}📦 Updating System Repositories...${NC}"
+# 2. System Updates & Time Sync (CRITICAL FOR PUSH NOTIFICATIONS)
+echo -e "${YELLOW}📦 Updating System & Syncing Time...${NC}"
 apt update && apt upgrade -y
+apt install -y systemd-timesyncd
+timedatectl set-ntp true
 
 # 3. Install Dependencies
 echo -e "${YELLOW}🛠️ Checking Dependencies...${NC}"

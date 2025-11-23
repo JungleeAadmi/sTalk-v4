@@ -1,221 +1,295 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { ArrowLeft, Send, Paperclip, MoreVertical, Trash2, Play, Camera } from 'lucide-react';
+import { ArrowLeft, Send, Paperclip, MoreVertical, Trash2, Play, Camera, Mic, X, Edit2, Reply } from 'lucide-react';
 import Avatar from './Avatar';
 import MediaViewer from './MediaViewer';
 import CameraModal from './CameraModal';
+import VoiceRecorder from './VoiceRecorder';
 
-// Helper: Turn URLs into clickable links
 const Linkify = ({ text }) => {
   const urlRegex = /(https?:\/\/[^\s]+)/g;
   const parts = text.split(urlRegex);
   return parts.map((part, i) => 
     part.match(urlRegex) ? (
-      <a key={i} href={part} target="_blank" rel="noopener noreferrer" className="text-blue-400 underline hover:text-blue-300 break-all">
+      <a key={i} href={part} target="_blank" rel="noopener noreferrer" className="text-blue-200 underline hover:text-white break-all relative z-10">
         {part}
       </a>
     ) : part
   );
 };
 
+const REACTIONS = ['❤️', '😂', '😍', '😘', '🤗', '☺️', '😉', '🤤', '😭', '👌', '🥰'];
+
 const ChatView = ({ activeUser, currentUser, socket, onBack }) => {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [viewMedia, setViewMedia] = useState(null); 
-  const [showCamera, setShowCamera] = useState(false); 
+  const [isTyping, setIsTyping] = useState(false);
+  const [otherTyping, setOtherTyping] = useState(false);
+  const [replyingTo, setReplyingTo] = useState(null);
+  const [editingId, setEditingId] = useState(null);
+  const [isRecording, setIsRecording] = useState(false);
+  
+  const [menuOpenId, setMenuOpenId] = useState(null); 
+  const [viewMedia, setViewMedia] = useState(null);
+  const [showCamera, setShowCamera] = useState(false);
   
   const scrollRef = useRef(null);
   const fileInputRef = useRef(null);
+  const typingTimeoutRef = useRef(null);
 
-  // Helper: Detect Type
   const getFileType = (msg) => {
     if (msg.type === 'video') return 'video';
     if (msg.type === 'image') return 'image';
+    if (msg.type === 'audio') return 'audio';
     const ext = msg.fileUrl?.split('.').pop().toLowerCase();
-    if (['mp4', 'webm', 'mov', 'ogg'].includes(ext)) return 'video';
-    if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext)) return 'image';
+    if (['mp4', 'webm', 'mov'].includes(ext)) return 'video';
+    if (['jpg', 'png', 'jpeg'].includes(ext)) return 'image';
+    if (['mp3', 'wav', 'ogg', 'webm'].includes(ext)) return 'audio';
     return 'text';
   };
 
-  const markRead = () => {
-    socket.emit('mark_read', { userId: currentUser.id, otherId: activeUser.id });
-  };
+  // --- SOCKETS & SYNC ---
+  const markRead = () => socket.emit('mark_read', { userId: currentUser.id, otherId: activeUser.id });
 
   useEffect(() => {
     const fetchHistory = async () => {
       const res = await fetch(`/api/chat/history?userId=${currentUser.id}&otherId=${activeUser.id}`);
       const data = await res.json();
-      const processed = data.map(m => ({ ...m, isMe: m.senderId === currentUser.id }));
-      setMessages(processed);
+      setMessages(data.map(m => ({ ...m, isMe: m.senderId === currentUser.id })));
       markRead();
     };
     fetchHistory();
-  }, [activeUser.id, currentUser.id]);
+  }, [activeUser.id]);
 
   useEffect(() => {
     const handleMsg = (data) => {
        if(data.message.senderId === activeUser.id || data.message.recipientId === activeUser.id) {
           setMessages(prev => [...prev, { ...data.message, isMe: false }]);
-          markRead(); 
+          markRead();
        }
     };
-    const handleSentConfirm = (data) => setMessages(prev => [...prev, data.finalMsg]);
-    const handleReadUpdate = (data) => {
-        if(data.by === activeUser.id) setMessages(prev => prev.map(m => m.isMe ? { ...m, status: 'read' } : m));
+    const handleUpdate = (msg) => {
+        setMessages(prev => prev.map(m => m.id === msg.id ? { ...msg, isMe: m.isMe } : m));
+    };
+    const handleDelete = ({ messageId }) => {
+        setMessages(prev => prev.filter(m => m.id !== messageId));
+    };
+    const handleTyping = ({ from, isTyping }) => {
+        if(from === activeUser.id) setOtherTyping(isTyping);
     };
 
     socket.on('receive_message', handleMsg);
-    socket.on('message_sent_confirm', handleSentConfirm);
-    socket.on('messages_were_read', handleReadUpdate);
-
+    socket.on('message_sent_confirm', (data) => setMessages(prev => [...prev, data.finalMsg]));
+    socket.on('message_updated', handleUpdate);
+    socket.on('message_deleted', handleDelete);
+    socket.on('typing_status', handleTyping);
+    
     return () => {
-        socket.off('receive_message', handleMsg);
-        socket.off('message_sent_confirm', handleSentConfirm);
-        socket.off('messages_were_read', handleReadUpdate);
+        socket.off('receive_message');
+        socket.off('message_sent_confirm');
+        socket.off('message_updated');
+        socket.off('message_deleted');
+        socket.off('typing_status');
     };
   }, [socket, activeUser.id]);
 
   useEffect(() => {
     if(scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-  }, [messages]);
+  }, [messages, otherTyping]);
+
+  // --- ACTIONS ---
+  const handleTypingInput = (e) => {
+      setInput(e.target.value);
+      if(!isTyping) {
+          setIsTyping(true);
+          socket.emit('typing', { to: activeUser.id, isTyping: true });
+      }
+      clearTimeout(typingTimeoutRef.current);
+      typingTimeoutRef.current = setTimeout(() => {
+          setIsTyping(false);
+          socket.emit('typing', { to: activeUser.id, isTyping: false });
+      }, 2000);
+  };
 
   const sendMessage = (fileUrl = null, type = 'text') => {
-    if(!input.trim() && !fileUrl) return;
+    if((!input.trim() && !fileUrl)) return;
+    
+    if(editingId) {
+        socket.emit('edit_message', { messageId: editingId, newText: input });
+        setEditingId(null);
+        setInput("");
+        return;
+    }
+
     const msg = { 
-      id: Date.now(), 
+      id: Date.now(),
       text: type !== 'text' ? type : input, 
-      fileUrl, 
-      type, 
-      senderId: currentUser.id 
+      fileUrl, type, 
+      senderId: currentUser.id,
+      replyTo: replyingTo 
     };
+    
     socket.emit('send_message', { senderId: currentUser.id, recipientId: activeUser.id, message: msg });
+    
     if(type === 'text') setInput("");
+    setReplyingTo(null);
   };
 
   const handleFileUpload = async (e) => {
-    const file = e.target.files[0];
+    // Support both Event (from input) and File (from Recorder/Camera)
+    const file = (e.target && e.target.files) ? e.target.files[0] : e;
     if(!file) return;
-    const type = file.type.startsWith('video') ? 'video' : 'image';
+    
     const formData = new FormData();
     formData.append('file', file);
+    
+    let type = 'text';
+    if(file.type.startsWith('image')) type = 'image';
+    else if(file.type.startsWith('video')) type = 'video';
+    else if(file.type.startsWith('audio')) type = 'audio';
+
     try {
       const res = await fetch('/api/upload', { method: 'POST', body: formData });
       const data = await res.json();
-      if(data.url) sendMessage(data.url, type);
+      if(data.url) {
+          sendMessage(data.url, type);
+          setIsRecording(false);
+      }
     } catch(err) { console.error(err); }
   };
 
-  const handleCameraCapture = async (file) => {
-    setShowCamera(false);
-    const formData = new FormData();
-    formData.append('file', file);
-    const type = file.type.startsWith('video') ? 'video' : 'image';
-    try {
-      const res = await fetch('/api/upload', { method: 'POST', body: formData });
-      const data = await res.json();
-      if(data.url) sendMessage(data.url, type);
-    } catch(err) { console.error(err); }
+  const handleReaction = (msgId, emoji) => {
+      socket.emit('add_reaction', { chatId: null, messageId: msgId, emoji, userId: currentUser.id });
+      setMenuOpenId(null);
   };
 
-  const getLastSeen = () => {
-      if(activeUser.isOnline) return "Online";
-      if(!activeUser.lastSeen) return "Offline";
-      const date = new Date(activeUser.lastSeen);
-      const isToday = date.getDate() === new Date().getDate();
-      return `Last seen ${isToday ? 'today' : date.toLocaleDateString()} at ${date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`;
+  const handleDelete = (msgId) => {
+      if(confirm("Delete this message?")) socket.emit('delete_message', { messageId: msgId });
   };
 
+  // --- RENDER ---
   return (
-    <div className="flex flex-col h-full bg-[#efeae2] dark:bg-[#0b141a]">
-      {/* Header */}
-      <div className="flex-none h-16 bg-white dark:bg-gray-800 px-4 flex items-center gap-3 shadow-sm z-10 border-b dark:border-gray-700">
-        <button onClick={onBack} className="md:hidden text-gray-600 dark:text-gray-300 hover:bg-gray-100 p-1 rounded-full"><ArrowLeft /></button>
-        <Avatar user={activeUser} />
+    <div className="flex flex-col h-full bg-gray-50 dark:bg-gray-900 transition-colors duration-200">
+      
+      {/* HEADER */}
+      <div className="flex-none h-16 bg-white dark:bg-gray-800 px-4 flex items-center gap-3 shadow-sm z-10 border-b dark:border-gray-700 transition-colors">
+        <button onClick={onBack} className="md:hidden text-gray-600 dark:text-gray-300"><ArrowLeft /></button>
+        <div onClick={() => setViewMedia({ url: activeUser.avatar, type: 'image' })} className="cursor-pointer">
+            <Avatar user={activeUser} />
+        </div>
         <div className="flex-1">
            <h3 className="font-bold text-gray-800 dark:text-gray-100 leading-tight">{activeUser.name}</h3>
-           <span className="text-xs text-green-500">{getLastSeen()}</span>
+           <span className="text-xs text-primary animate-pulse">
+               {otherTyping ? "typing..." : (activeUser.isOnline ? "Online" : "Offline")}
+           </span>
         </div>
-        <div className="relative">
-          <button onClick={() => setMenuOpen(!menuOpen)} className="p-2 text-gray-500 hover:bg-gray-100 rounded-full"><MoreVertical /></button>
-          {menuOpen && (
-            <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded shadow-lg border dark:border-gray-700 py-1 z-20">
-              <button className="w-full text-left px-4 py-2 text-sm text-red-500 hover:bg-red-50 dark:hover:bg-gray-700 flex items-center gap-2" onClick={() => { setMessages([]); setMenuOpen(false); }}>
-                <Trash2 size={16} /> Clear Local Chat
-              </button>
-            </div>
-          )}
-        </div>
+        <MoreVertical className="text-gray-400" />
       </div>
 
-      {/* Chat Area */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-2 overscroll-contain" 
+      {/* CHAT AREA */}
+      <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-3 overscroll-contain" 
            style={{ backgroundImage: currentUser.settings?.wallpaper ? `url(${currentUser.settings.wallpaper})` : "none", backgroundSize: 'cover', backgroundPosition: 'center' }}>
          
          {messages.map((m, i) => {
-            const effectiveType = getFileType(m);
+            const type = getFileType(m);
+            const hasReactions = m.reactions && Object.keys(m.reactions).length > 0;
 
             return (
-              <div key={i} className={`flex ${m.isMe ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-[75%] px-2 py-2 rounded-lg text-sm shadow-sm 
-                    ${m.isMe ? 'bg-primary text-white' : 'bg-white dark:bg-gray-800 dark:text-white'}`}>
-                    
-                    {/* IMAGE */}
-                    {effectiveType === 'image' && (
-                      <div className="relative overflow-hidden rounded-lg mb-1">
-                        <img 
-                            src={m.fileUrl} 
-                            className="w-full h-auto min-w-[150px] max-w-[280px] max-h-[300px] object-cover cursor-pointer hover:opacity-90 transition" 
-                            onClick={() => setViewMedia({ url: m.fileUrl, type: 'image' })}
-                            alt="attachment"
-                        />
-                      </div>
-                    )}
-
-                    {/* VIDEO */}
-                    {effectiveType === 'video' && (
-                      <div className="relative cursor-pointer group rounded-lg overflow-hidden bg-black min-w-[200px] max-w-[280px]" onClick={() => setViewMedia({ url: m.fileUrl, type: 'video' })}>
-                          <video 
-                            src={m.fileUrl} 
-                            className="w-full max-h-[250px] object-contain" 
-                            muted 
-                            preload="metadata" 
-                            playsInline 
-                          />
-                          <div className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover:bg-black/10 transition">
-                              <div className="bg-black/60 p-3 rounded-full backdrop-blur-sm"><Play fill="white" className="text-white ml-1" size={20}/></div>
-                          </div>
-                      </div>
-                    )}
-
-                    {/* TEXT */}
-                    {effectiveType === 'text' && <p className="leading-relaxed px-1"><Linkify text={m.text} /></p>}
-                    
-                    {/* META */}
-                    <div className={`flex justify-end items-center gap-1 mt-1 text-[10px] pr-1 ${m.isMe ? 'text-white/80' : 'text-gray-400'}`}>
-                      <span>{new Date(m.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
-                      {m.isMe && <span className="capitalize font-medium">• {m.status}</span>} 
+              <div key={i} className={`flex flex-col ${m.isMe ? 'items-end' : 'items-start'} relative group`}>
+                
+                {/* REPLY CONTEXT */}
+                {m.replyTo && (
+                    <div className={`text-xs mb-1 px-2 py-1 rounded opacity-70 ${m.isMe ? 'bg-primary/20 text-right' : 'bg-gray-200 dark:bg-gray-700'}`}>
+                        Replying to: {m.replyTo.text?.substring(0, 20)}...
                     </div>
+                )}
+
+                {/* MESSAGE BUBBLE */}
+                <div 
+                    onDoubleClick={() => setMenuOpenId(m.id)}
+                    onContextMenu={(e) => e.preventDefault()}
+                    className={`max-w-[75%] px-2 py-2 rounded-lg text-sm shadow-sm relative select-none touch-action-manipulation
+                    ${m.isMe ? 'bg-primary text-white' : 'bg-white dark:bg-gray-800 dark:text-white'}`}
+                >
+                    {type === 'image' && <img src={m.fileUrl} className="max-w-[250px] rounded mb-1 cursor-pointer" onClick={() => setViewMedia({url:m.fileUrl, type:'image'})}/>}
+                    {type === 'video' && <video src={m.fileUrl} className="max-w-[250px] rounded mb-1" controls playsInline muted />}
+                    {type === 'audio' && <audio src={m.fileUrl} controls className="w-[250px] h-10 mt-1" />}
+                    
+                    {type === 'text' && <p className="leading-relaxed px-1"><Linkify text={m.text} /></p>}
+                    
+                    <div className="flex justify-end items-center gap-1 mt-1 text-[10px] opacity-70">
+                      {m.isEdited && <span>(edited)</span>}
+                      <span>{new Date(m.timestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
+                      {m.isMe && <span>• {m.status}</span>}
+                    </div>
+
+                    {/* REACTIONS BADGE */}
+                    {hasReactions && (
+                        <div className="absolute -bottom-2 right-0 bg-white dark:bg-gray-700 rounded-full px-1 shadow-md border dark:border-gray-600 flex gap-0.5 text-xs z-10 scale-90">
+                            {Object.values(m.reactions).slice(0, 3).map((r, idx) => <span key={idx}>{r}</span>)}
+                            {Object.values(m.reactions).length > 3 && <span>+</span>}
+                        </div>
+                    )}
                 </div>
+
+                {/* CONTEXT MENU (Above Message) */}
+                {menuOpenId === m.id && (
+                    <div className="absolute bottom-full mb-2 z-20 bg-white dark:bg-gray-800 rounded-lg shadow-xl border dark:border-gray-700 p-2 flex flex-col gap-2 min-w-[200px] animate-fade-in">
+                        <div className="flex flex-wrap gap-1 mb-2 border-b dark:border-gray-600 pb-2">
+                            {REACTIONS.map(r => (
+                                <button key={r} onClick={() => handleReaction(m.id, r)} className="hover:scale-125 transition text-lg p-1">{r}</button>
+                            ))}
+                        </div>
+                        <button onClick={() => { setReplyingTo(m); setMenuOpenId(null); }} className="flex items-center gap-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 p-1 rounded"><Reply size={14}/> Reply</button>
+                        {m.isMe && (
+                            <>
+                                <button onClick={() => { setEditingId(m.id); setInput(m.text); setMenuOpenId(null); }} className="flex items-center gap-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 p-1 rounded"><Edit2 size={14}/> Edit</button>
+                                <button onClick={() => handleDelete(m.id)} className="flex items-center gap-2 text-sm text-red-500 hover:bg-red-50 p-1 rounded"><Trash2 size={14}/> Delete</button>
+                            </>
+                        )}
+                        <button onClick={() => setMenuOpenId(null)} className="text-xs text-center text-gray-400 mt-1 w-full border-t pt-1">Close</button>
+                    </div>
+                )}
               </div>
             );
          })}
       </div>
 
-      {/* Footer - WITH LIFTED BOTTOM FOR IPHONE 15 */}
-      {/* Added 'pb-8' to lift the bar above the corner radius */}
-      <div className="flex-none bg-white dark:bg-gray-800 p-2 pb-8 flex items-center gap-2 border-t dark:border-gray-700 safe-area-bottom">
-         <input type="file" hidden ref={fileInputRef} onChange={handleFileUpload} accept="image/*,video/*" />
-         <button onClick={() => fileInputRef.current.click()} className="p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition"><Paperclip size={20}/></button>
-         <button onClick={() => setShowCamera(true)} className="p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition"><Camera size={20}/></button>
-         <input 
-           className="flex-1 bg-gray-100 dark:bg-gray-700 rounded-full px-4 py-2 outline-none dark:text-white placeholder-gray-500" 
-           value={input} onChange={e => setInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && sendMessage()} onFocus={markRead} placeholder="Message"
-         />
-         <button onClick={() => sendMessage()} className="p-2 bg-primary rounded-full text-white shadow-lg hover:brightness-110 transition active:scale-95"><Send size={18} /></button>
+      {/* FOOTER */}
+      <div className="flex-none bg-white dark:bg-gray-800 p-2 pb-8 flex items-center gap-2 border-t dark:border-gray-700 safe-area-bottom relative transition-colors">
+         {replyingTo && (
+             <div className="absolute bottom-full left-0 w-full bg-gray-100 dark:bg-gray-700 p-2 border-t dark:border-gray-600 flex justify-between items-center text-xs">
+                 <span className="truncate border-l-4 border-primary pl-2">Replying to: {replyingTo.text || "Media"}</span>
+                 <button onClick={() => setReplyingTo(null)}><X size={14}/></button>
+             </div>
+         )}
+
+         {isRecording ? (
+             <VoiceRecorder onSend={handleFileUpload} onCancel={() => setIsRecording(false)} />
+         ) : (
+             <>
+                <input type="file" hidden ref={fileInputRef} onChange={handleFileUpload} accept="image/*,video/*,audio/*" />
+                <button onClick={() => fileInputRef.current.click()} className="p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full"><Paperclip size={20}/></button>
+                <button onClick={() => setShowCamera(true)} className="p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full"><Camera size={20}/></button>
+                
+                <input 
+                  className="flex-1 bg-gray-100 dark:bg-gray-700 rounded-full px-4 py-2 outline-none dark:text-white placeholder-gray-500" 
+                  value={input} 
+                  onChange={handleTypingInput} 
+                  onKeyDown={(e) => e.key === 'Enter' && sendMessage()} 
+                  placeholder={editingId ? "Edit message..." : "Message"}
+                />
+                
+                {input.trim() ? (
+                    <button onClick={() => sendMessage()} className="p-2 bg-primary rounded-full text-white shadow"><Send size={18} /></button>
+                ) : (
+                    <button onClick={() => setIsRecording(true)} className="p-2 bg-primary rounded-full text-white shadow"><Mic size={18} /></button>
+                )}
+             </>
+         )}
       </div>
 
       {viewMedia && <MediaViewer media={viewMedia} onClose={() => setViewMedia(null)} />}
-      {showCamera && <CameraModal onClose={() => setShowCamera(false)} onCapture={handleCameraCapture} />}
+      {showCamera && <CameraModal onClose={() => setShowCamera(false)} onCapture={handleFileUpload} />}
     </div>
   );
 };

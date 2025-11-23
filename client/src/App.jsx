@@ -4,11 +4,12 @@ import ChatView from './components/ChatView';
 import SettingsModal from './components/SettingsModal';
 import Avatar from './components/Avatar';
 import { Settings as SettingsIcon, Search } from 'lucide-react';
+import { useAuth } from './context/AuthContext';
 
 const socket = io();
 
 function App() {
-  const [user, setUser] = useState(null);
+  const { user, setUser, logout } = useAuth();
   const [selectedChatId, setSelectedChatId] = useState(null);
   const [activeUser, setActiveUser] = useState(null);
   const [showSettings, setShowSettings] = useState(false);
@@ -17,62 +18,22 @@ function App() {
   const [usernameInput, setUsernameInput] = useState('');
   const [passwordInput, setPasswordInput] = useState('');
 
-  // --- IOS KEYBOARD FIX (Visual Viewport Engine) ---
   const [viewportHeight, setViewportHeight] = useState('100%');
 
   useEffect(() => {
-    // This function forces the app height to match the visible area
-    // (excluding the keyboard)
     const handleResize = () => {
       if (window.visualViewport) {
         setViewportHeight(`${window.visualViewport.height}px`);
-        // Scroll to bottom of chat if open (optional polish)
         window.scrollTo(0, 0);
       }
     };
-
     if (window.visualViewport) {
       window.visualViewport.addEventListener('resize', handleResize);
-      handleResize(); // Init
+      handleResize();
     }
-
-    return () => {
-      if (window.visualViewport) {
-        window.visualViewport.removeEventListener('resize', handleResize);
-      }
-    };
+    return () => window.visualViewport?.removeEventListener('resize', handleResize);
   }, []);
 
-  // --- THEME ENGINE ---
-  useLayoutEffect(() => {
-     if (user?.settings) {
-       if(user.settings.darkMode) document.documentElement.classList.add('dark');
-       else document.documentElement.classList.remove('dark');
-       
-       const themeColor = user.settings.theme || '#2563eb';
-       document.documentElement.style.setProperty('--primary-color', themeColor);
-     }
-  }, [user]);
-
-  // --- INITIAL LOAD ---
-  useEffect(() => {
-    const savedUserStr = localStorage.getItem('stalk_user');
-    if (savedUserStr) {
-      const savedUser = JSON.parse(savedUserStr);
-      setUser(savedUser); 
-      // Force Fresh Sync
-      fetch(`/api/me?id=${savedUser.id}&t=${Date.now()}`)
-        .then(r => r.json())
-        .then(data => {
-           if(data.success) {
-             setUser(data.user); 
-             localStorage.setItem('stalk_user', JSON.stringify(data.user));
-           }
-        }).catch(err => console.error(err));
-    }
-  }, []);
-
-  // --- FETCH USERS ---
   const fetchUsers = useCallback(() => {
     if(!user) return;
     const url = `/api/users/search?q=${searchQuery}&currentUserId=${user.id}&t=${Date.now()}`;
@@ -85,7 +46,6 @@ function App() {
     return () => clearInterval(interval);
   }, [fetchUsers]);
 
-  // --- SOCKETS ---
   useEffect(() => {
     if(!user) return;
     socket.emit('join', user.id);
@@ -103,10 +63,7 @@ function App() {
     };
 
     const handleUserUpdated = ({ userId, user: updatedUser }) => {
-        if(user.id === userId) {
-            setUser(updatedUser);
-            localStorage.setItem('stalk_user', JSON.stringify(updatedUser));
-        }
+        if(user.id === userId) setUser(updatedUser);
         setUsersList(prev => prev.map(u => u.id === userId ? { ...u, ...updatedUser } : u));
         if(activeUser?.id === userId) setActiveUser(prev => ({ ...prev, ...updatedUser }));
     };
@@ -129,21 +86,8 @@ function App() {
         body: JSON.stringify({ username: usernameInput, password: passwordInput })
     });
     const data = await res.json();
-    if(data.success) {
-      setUser(data.user);
-      localStorage.setItem('stalk_user', JSON.stringify(data.user));
-    } else alert(data.message);
-  };
-
-  const handleLogout = () => {
-    localStorage.removeItem('stalk_user');
-    window.location.reload();
-  };
-
-  const handleUpdateUser = (updates) => {
-      const updatedUser = {...user, ...updates, settings: {...user.settings, ...updates.settings}};
-      setUser(updatedUser);
-      localStorage.setItem('stalk_user', JSON.stringify(updatedUser));
+    if(data.success) setUser(data.user);
+    else alert(data.message);
   };
 
   if (!user) {
@@ -152,10 +96,10 @@ function App() {
          <div className="flex flex-col items-center gap-4 w-96 px-4">
             <img src="/logo.svg" className="w-24 h-24" alt="Logo" /> 
             <div className="p-8 bg-gray-800 rounded-lg shadow-xl w-full">
-              <h1 className="text-3xl font-bold text-center mb-6 text-blue-500">sTalk</h1>
+              <h1 className="text-3xl font-bold text-center mb-6 text-primary">sTalk</h1>
               <input className="w-full mb-3 p-3 rounded bg-gray-700 outline-none" placeholder="Username" value={usernameInput} onChange={e=>setUsernameInput(e.target.value)} />
               <input className="w-full mb-6 p-3 rounded bg-gray-700 outline-none" type="password" placeholder="Password" value={passwordInput} onChange={e=>setPasswordInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleLogin()}/>
-              <button onClick={handleLogin} className="w-full bg-blue-600 hover:bg-blue-700 transition p-3 rounded font-bold">Login</button>
+              <button onClick={handleLogin} className="w-full bg-primary hover:opacity-90 transition p-3 rounded font-bold">Login</button>
             </div>
          </div>
       </div>
@@ -163,7 +107,6 @@ function App() {
   }
 
   return (
-    // FIX: Apply the dynamic viewportHeight directly to the container
     <div 
       className="fixed inset-0 flex overflow-hidden bg-white dark:bg-gray-900 transition-colors duration-200"
       style={{ height: viewportHeight }} 
@@ -187,7 +130,7 @@ function App() {
         <div className="flex-1 overflow-y-auto">
              {usersList.map(u => (
                  <div key={u.id} onClick={() => { setSelectedChatId(u.id); setActiveUser(u); setUsersList(prev => prev.map(pu => pu.id === u.id ? { ...pu, unread: 0 } : pu)); }} 
-                      className={`flex items-center gap-3 p-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition ${selectedChatId === u.id ? 'bg-gray-100 dark:bg-gray-700' : ''}`}>
+                      className={`flex items-center gap-3 p-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition ${selectedChatId === u.id ? 'bg-gray-100 dark:bg-gray-800' : ''}`}>
                     <Avatar user={u} />
                     <div className="flex-1 min-w-0">
                         <div className="flex justify-between items-baseline">
@@ -210,7 +153,7 @@ function App() {
         )}
       </div>
 
-      {showSettings && <SettingsModal user={user} onClose={() => setShowSettings(false)} onLogout={handleLogout} onUpdateUser={handleUpdateUser} />}
+      {showSettings && <SettingsModal user={user} onClose={() => setShowSettings(false)} onLogout={logout} onUpdateUser={setUser} />}
     </div>
   );
 }
