@@ -7,10 +7,21 @@ BACKUP_ROOT="/opt/stalk_backups"
 
 echo -e "${GREEN}🔄 sTalk Updater${NC}"
 
+# Check Root (Required for apt installs)
+if [ "$EUID" -ne 0 ]; then
+  echo -e "${RED}Please run as root (sudo ./update.sh)${NC}"
+  exit
+fi
+
 if [ ! -d "$TARGET_DIR" ]; then
     echo "sTalk is not installed at $TARGET_DIR."
     exit 1
 fi
+
+# 0. Sync Time (Crucial for SSL/Push)
+echo -e "${YELLOW}🕒 Synchronizing System Time...${NC}"
+apt install -y systemd-timesyncd
+timedatectl set-ntp true
 
 cd $TARGET_DIR
 
