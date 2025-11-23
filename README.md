@@ -8,7 +8,7 @@ A Progressive Web App (PWA) 100% made by AI, no human coding involved and its pu
 
 ## ✨ Features
 🔔 Multi-Device Push: Notifications ring on all your devices (iOS, Android, Desktop) simultaneously.
- - ***please note that your server/lxc container time has to be same as your local time to make this push notification work***
+ - ***please note that your server/lxc container time has to be same as your local time to make this push notification work*** - check at the bottom for more.
 
 🎙️ Voice Notes: Record and send audio messages directly.
 
@@ -75,6 +75,32 @@ Tap the Share icon -> Add to Home Screen.
 Launch the app from the Home Screen icon.
 
 Go to Settings -> Enable Push Notifications, follow the popups. 
+
+## ⏰ Update timezone
+Here is the generic command sequence to set your timezone and force a synchronization with internet time servers.
+
+Run this in your terminal:
+
+```
+# 1. Set Timezone (Replace 'TZ' with your desired region if different)
+timedatectl set-timezone 'TZ'
+
+# 2. Install the sync service (Essential for LXC containers)
+apt install -y systemd-timesyncd
+
+# 3. Enable synchronization
+timedatectl set-ntp true
+
+# 4. Restart the service to apply immediately
+systemctl restart systemd-timesyncd
+
+# 5. Verify the time is correct
+date
+```
+***To find a different timezone: If you need a timezone other than IST, run this to see the list:***
+```
+timedatectl list-timezones
+```
 
 ## 📜 License
 
