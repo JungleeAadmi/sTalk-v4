@@ -47,7 +47,8 @@ if (!fs.existsSync(VAPID_PATH)) {
 } else {
   vapidKeys = JSON.parse(fs.readFileSync(VAPID_PATH));
 }
-webpush.setVapidDetails('mailto:admin@littleguy.duckdns.org', vapidKeys.publicKey, vapidKeys.privateKey);
+// UPDATED DOMAIN
+webpush.setVapidDetails('mailto:admin@chats.littleguy.duckdns.org', vapidKeys.publicKey, vapidKeys.privateKey);
 
 const getDb = () => {
     if (!fs.existsSync(DB_PATH)) return { users: [], chats: [] };
@@ -68,10 +69,8 @@ app.post('/api/subscribe', (req, res) => {
     const idx = db.users.findIndex(u => u.id === userId);
     
     if (idx > -1) {
-        // Initialize array if missing
         if (!db.users[idx].pushSubscriptions) db.users[idx].pushSubscriptions = [];
         
-        // Check if this device is already registered (by endpoint URL)
         const exists = db.users[idx].pushSubscriptions.some(s => s.endpoint === subscription.endpoint);
         
         if (!exists) {
@@ -87,7 +86,7 @@ app.post('/api/subscribe', (req, res) => {
     }
 });
 
-// NEW: Multi-Device Test
+// NEW: Multi-Device Test WITH DEEP LOGGING
 app.post('/api/push/test', (req, res) => {
     const { userId } = req.body;
     console.log(`⚠️ Manual Push Test for ${userId}`);
@@ -100,11 +99,10 @@ app.post('/api/push/test', (req, res) => {
 
     const payload = JSON.stringify({ title: "sTalk Test", body: "Testing All Devices!", url: "/" });
     
-    // Send to ALL devices
     const promises = subs.map(sub => 
         webpush.sendNotification(sub, payload)
             .then(() => ({ success: true, endpoint: sub.endpoint }))
-            .catch(err => ({ success: false, err: err.statusCode, endpoint: sub.endpoint }))
+            .catch(err => ({ success: false, err: err.code || err.statusCode || err.message, endpoint: sub.endpoint }))
     );
 
     Promise.all(promises).then(results => {
@@ -113,7 +111,12 @@ app.post('/api/push/test', (req, res) => {
         
         console.log(`📊 Test Result: ${successCount}/${subs.length} sent.`);
         
-        // Cleanup Dead Devices (410/404)
+        if (failures.length > 0) {
+            console.log("❌ Failures details:");
+            failures.forEach(f => console.log(`   - Endpoint: ${f.endpoint.slice(0, 20)}... Error: ${f.err}`));
+        }
+        
+        // Cleanup Dead Devices
         let needsSave = false;
         failures.forEach(f => {
             if(f.err === 410 || f.err === 404) {
@@ -129,11 +132,7 @@ app.post('/api/push/test', (req, res) => {
     });
 });
 
-// ... (Keep Standard Routes: login, me, history, search, upload, update, password, admin) ...
-// FOR BREVITY: Assume Standard Routes are here (Same as before). 
-// Paste the previous "Standard Routes" and "Admin Routes" blocks here if typing manually.
-// OR just copy the blocks below:
-
+// Core Routes
 app.post('/api/login', (req, res) => {
     const { username, password } = req.body;
     const db = getDb();
@@ -257,10 +256,8 @@ io.on('connection', (socket) => {
     io.to(data.recipientId).emit('receive_message', { chatId: chat.id, message: newMsg });
     io.to(data.senderId).emit('message_sent_confirm', { tempId: data.message.id, finalMsg: { ...newMsg, isMe: true } });
 
-    // --- MULTI-DEVICE PUSH ---
-    // Handle Legacy (Single object) and New (Array)
+    // Multi-Device Push
     const subs = recipient?.pushSubscriptions || (recipient?.pushSubscription ? [recipient.pushSubscription] : []);
-    
     if(subs.length > 0) {
         const senderName = db.users.find(u => u.id === data.senderId)?.name || "Someone";
         const payload = JSON.stringify({ 
@@ -268,13 +265,9 @@ io.on('connection', (socket) => {
             body: newMsg.type === 'image' ? 'Sent a photo' : (newMsg.type === 'video' ? 'Sent a video' : (newMsg.type === 'audio' ? 'Sent a voice note' : newMsg.text)),
             url: '/' 
         });
-
         subs.forEach(sub => {
             webpush.sendNotification(sub, payload).catch(err => {
-                if (err.statusCode === 410 || err.statusCode === 404) {
-                    // Cleanup logic on next save or use immediate cleanup
-                    console.log(`Removing dead sub`);
-                }
+                if (err.statusCode === 410 || err.statusCode === 404) console.log(`Removing dead sub`);
             });
         });
     }
