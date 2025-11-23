@@ -16,8 +16,12 @@ if [ "$EUID" -ne 0 ]; then
   exit
 fi
 
-# 2. System Updates & Time Sync (CRITICAL FOR PUSH NOTIFICATIONS)
-echo -e "${YELLOW}📦 Updating System & Syncing Time...${NC}"
+# 2. Configure Network (Disable IPv6 for Apple Push Compatibility) & Time
+echo -e "${YELLOW}🌐 Configuring Network & Time...${NC}"
+sysctl -w net.ipv6.conf.all.disable_ipv6=1
+sysctl -w net.ipv6.conf.default.disable_ipv6=1
+sysctl -w net.ipv6.conf.lo.disable_ipv6=1
+
 apt update && apt upgrade -y
 apt install -y systemd-timesyncd
 timedatectl set-ntp true

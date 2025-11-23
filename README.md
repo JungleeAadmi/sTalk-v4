@@ -7,8 +7,10 @@ A Progressive Web App (PWA) 100% made by AI, no human coding involved and its pu
 ![sTalk Banner](client/public/logo.png)
 
 ## ✨ Features
-🔔 Multi-Device Push: Notifications ring on all your devices (iOS, Android, Desktop) simultaneously.
+🔔 Multi-Device Push: Notifications ring on all your devices (iOS, Android, Desktop) simultaneously.(READ NOTES BELOW)
  - ***please note that your server/lxc container time has to be same as your local time to make this push notification work*** - check at the bottom for more.
+
+ - ***if the iOS notification push says server error, block all ipv6 networking from the container***
 
 🎙️ Voice Notes: Record and send audio messages directly.
 

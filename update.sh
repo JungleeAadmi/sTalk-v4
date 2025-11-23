@@ -18,8 +18,12 @@ if [ ! -d "$TARGET_DIR" ]; then
     exit 1
 fi
 
-# 0. Sync Time (Crucial for SSL/Push)
-echo -e "${YELLOW}🕒 Synchronizing System Time...${NC}"
+# 0. Configure Network & Time (Crucial for SSL/Push)
+echo -e "${YELLOW}🌐 Configuring Network (IPv6 Block) & Time...${NC}"
+sysctl -w net.ipv6.conf.all.disable_ipv6=1
+sysctl -w net.ipv6.conf.default.disable_ipv6=1
+sysctl -w net.ipv6.conf.lo.disable_ipv6=1
+
 apt install -y systemd-timesyncd
 timedatectl set-ntp true
 
