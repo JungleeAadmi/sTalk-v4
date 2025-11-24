@@ -28,7 +28,10 @@ const ChatView = ({ activeUser, currentUser, socket, onBack }) => {
   const [editingId, setEditingId] = useState(null);
   const [isRecording, setIsRecording] = useState(false);
   
-  const [menuOpenId, setMenuOpenId] = useState(null); 
+  // MENUS
+  const [menuOpenId, setMenuOpenId] = useState(null); // For individual messages
+  const [headerMenuOpen, setHeaderMenuOpen] = useState(false); // FIX: For the top 3-dots
+  
   const [viewMedia, setViewMedia] = useState(null);
   const [showCamera, setShowCamera] = useState(false);
   
@@ -45,6 +48,19 @@ const ChatView = ({ activeUser, currentUser, socket, onBack }) => {
     if (['jpg', 'png', 'jpeg'].includes(ext)) return 'image';
     if (['mp3', 'wav', 'ogg', 'webm'].includes(ext)) return 'audio';
     return 'text';
+  };
+
+  // --- HELPER: JUMP TO MESSAGE (FIX #1) ---
+  const scrollToMessage = (msgId) => {
+      const element = document.getElementById(`msg-${msgId}`);
+      if (element) {
+          element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          // Optional: Flash effect
+          element.classList.add('ring-2', 'ring-primary', 'ring-offset-2');
+          setTimeout(() => element.classList.remove('ring-2', 'ring-primary', 'ring-offset-2'), 1000);
+      } else {
+          alert("Message not found (might be too old)");
+      }
   };
 
   // --- SOCKETS & SYNC ---
@@ -133,11 +149,9 @@ const ChatView = ({ activeUser, currentUser, socket, onBack }) => {
     setReplyingTo(null);
   };
 
-  // Standard File Upload
   const handleFileUpload = async (e) => {
     const file = (e.target && e.target.files) ? e.target.files[0] : e;
     if(!file) return;
-    
     const formData = new FormData();
     formData.append('file', file);
     
@@ -156,10 +170,9 @@ const ChatView = ({ activeUser, currentUser, socket, onBack }) => {
     } catch(err) { console.error(err); }
   };
 
-  // Dedicated Camera Capture (Closes Modal)
   const handleCameraCapture = async (file) => {
       await handleFileUpload(file);
-      setShowCamera(false); // Close the modal after upload
+      setShowCamera(false);
   };
 
   const handleReaction = (msgId, emoji) => {
@@ -173,6 +186,8 @@ const ChatView = ({ activeUser, currentUser, socket, onBack }) => {
 
   return (
     <div className="flex flex-col h-full bg-gray-50 dark:bg-gray-900 transition-colors duration-200">
+      
+      {/* HEADER */}
       <div className="flex-none h-16 bg-white dark:bg-gray-800 px-4 flex items-center gap-3 shadow-sm z-10 border-b dark:border-gray-700 transition-colors">
         <button onClick={onBack} className="md:hidden text-gray-600 dark:text-gray-300"><ArrowLeft /></button>
         <div onClick={() => setViewMedia({ url: activeUser.avatar, type: 'image' })} className="cursor-pointer">
@@ -184,9 +199,29 @@ const ChatView = ({ activeUser, currentUser, socket, onBack }) => {
                {otherTyping ? "typing..." : (activeUser.isOnline ? "Online" : "Offline")}
            </span>
         </div>
-        <MoreVertical className="text-gray-400" />
+        
+        {/* FIX #2: Header 3-Dots Menu */}
+        <div className="relative">
+          <button onClick={() => setHeaderMenuOpen(!headerMenuOpen)} className="p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition"><MoreVertical /></button>
+          {headerMenuOpen && (
+            <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded shadow-lg border dark:border-gray-700 py-1 z-20">
+              <button 
+                className="w-full text-left px-4 py-2 text-sm text-red-500 hover:bg-red-50 dark:hover:bg-gray-700 flex items-center gap-2"
+                onClick={() => { 
+                    if(confirm("Clear all messages in this view? (Note: Does not delete from server)")) {
+                        setMessages([]); 
+                        setHeaderMenuOpen(false);
+                    }
+                }}
+              >
+                <Trash2 size={16} /> Clear Chat
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
+      {/* CHAT AREA */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-3 overscroll-contain" 
            style={{ backgroundImage: currentUser.settings?.wallpaper ? `url(${currentUser.settings.wallpaper})` : "none", backgroundSize: 'cover', backgroundPosition: 'center' }}>
          
@@ -196,19 +231,27 @@ const ChatView = ({ activeUser, currentUser, socket, onBack }) => {
 
             return (
               <div key={i} className={`flex flex-col ${m.isMe ? 'items-end' : 'items-start'} relative group`}>
+                
+                {/* FIX #1: JUMP TO REPLY */}
                 {m.replyTo && (
-                    <div className={`text-xs mb-1 px-2 py-1 rounded opacity-70 ${m.isMe ? 'bg-primary/20 text-right' : 'bg-gray-200 dark:bg-gray-700'}`}>
+                    <div 
+                        onClick={() => scrollToMessage(m.replyTo.id)}
+                        className={`text-xs mb-1 px-2 py-1 rounded opacity-70 cursor-pointer hover:opacity-100 transition-opacity ${m.isMe ? 'bg-primary/20 text-right' : 'bg-gray-200 dark:bg-gray-700'}`}
+                    >
                         Replying to: {m.replyTo.text?.substring(0, 20)}...
                     </div>
                 )}
 
+                {/* MESSAGE BUBBLE */}
                 <div 
+                    // ADDED ID FOR SCROLLING
+                    id={`msg-${m.id}`}
                     onDoubleClick={() => setMenuOpenId(m.id)}
                     onContextMenu={(e) => e.preventDefault()}
-                    className={`max-w-[75%] px-2 py-2 rounded-lg text-sm shadow-sm relative select-none touch-action-manipulation
+                    className={`max-w-[75%] px-2 py-2 rounded-lg text-sm shadow-sm relative select-none touch-action-manipulation transition-all duration-300
                     ${m.isMe ? 'bg-primary text-white' : 'bg-white dark:bg-gray-800 dark:text-white'}`}
                 >
-                    {/* Double Click on Media opens Menu, Click opens Viewer */}
+                    {/* Media Handlers */}
                     {type === 'image' && <img src={m.fileUrl} className="max-w-[250px] rounded mb-1 cursor-pointer" onClick={() => setViewMedia({url:m.fileUrl, type:'image'})} onDoubleClick={(e) => {e.stopPropagation(); setMenuOpenId(m.id)}} />}
                     {type === 'video' && <video src={m.fileUrl} className="max-w-[250px] rounded mb-1" controls playsInline muted onDoubleClick={(e) => {e.stopPropagation(); setMenuOpenId(m.id)}} />}
                     {type === 'audio' && <audio src={m.fileUrl} controls className="w-[250px] h-10 mt-1" onDoubleClick={(e) => {e.stopPropagation(); setMenuOpenId(m.id)}} />}
@@ -229,6 +272,7 @@ const ChatView = ({ activeUser, currentUser, socket, onBack }) => {
                     )}
                 </div>
 
+                {/* CONTEXT MENU */}
                 {menuOpenId === m.id && (
                     <div className={`absolute bottom-full mb-2 z-50 bg-white dark:bg-gray-800 rounded-lg shadow-xl border dark:border-gray-700 p-2 flex flex-col gap-2 min-w-[200px] animate-fade-in ${m.isMe ? 'right-0' : 'left-0'}`}>
                         <div className="flex flex-wrap gap-1 mb-2 border-b dark:border-gray-600 pb-2">
