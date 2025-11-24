@@ -8,7 +8,7 @@ const CameraModal = ({ onClose, onCapture }) => {
   
   const [imgSrc, setImgSrc] = useState(null);
   const [videoBlob, setVideoBlob] = useState(null);
-  const [processing, setProcessing] = useState(false); // NEW: Prevents multi-click
+  const [processing, setProcessing] = useState(false); // Prevent double-clicks
   
   const [facingMode, setFacingMode] = useState("environment");
   const [mode, setMode] = useState('photo'); 
@@ -18,7 +18,7 @@ const CameraModal = ({ onClose, onCapture }) => {
 
   useEffect(() => {
     let interval;
-    if (isRecording) interval = setInterval(() => setTime(t => t + 1), 1000);
+    if (isRecording) interval = setInterval(() => setTimer(t => t + 1), 1000);
     else setTimer(0);
     return () => clearInterval(interval);
   }, [isRecording]);
@@ -59,9 +59,9 @@ const CameraModal = ({ onClose, onCapture }) => {
     });
   }, [chunks]);
 
-  // FIX: Handle confirm with loading state
+  // Fixed Confirm Handler
   const handleConfirm = async () => {
-    if (processing) return; // Prevent double send
+    if (processing) return;
     setProcessing(true);
 
     try {
@@ -69,15 +69,16 @@ const CameraModal = ({ onClose, onCapture }) => {
         const res = await fetch(imgSrc);
         const blob = await res.blob();
         const file = new File([blob], `photo-${Date.now()}.jpg`, { type: "image/jpeg" });
-        onCapture(file);
+        await onCapture(file); // Wait for parent to finish
       } else if (mode === 'video' && chunks.length > 0) {
         const blob = new Blob(chunks, { type: "video/mp4" });
         const file = new File([blob], `video-${Date.now()}.mp4`, { type: "video/mp4" });
-        onCapture(file);
+        await onCapture(file);
       }
-      // Parent will unmount this component, so no need to setProcessing(false)
+      // Parent handles closing, but if it fails:
+      setProcessing(false);
     } catch (e) {
-      console.error(e);
+      console.error("Capture failed", e);
       setProcessing(false);
     }
   };
