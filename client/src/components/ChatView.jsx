@@ -10,7 +10,7 @@ const Linkify = ({ text }) => {
   const parts = text.split(urlRegex);
   return parts.map((part, i) => 
     part.match(urlRegex) ? (
-      <a key={i} href={part} target="_blank" rel="noopener noreferrer" className="text-blue-200 underline hover:text-white break-all relative z-10">
+      <a key={i} href={part} target="_blank" rel="noopener noreferrer" className="text-blue-400 underline hover:text-blue-300 break-all relative z-10">
         {part}
       </a>
     ) : part
@@ -47,7 +47,6 @@ const ChatView = ({ activeUser, currentUser, socket, onBack }) => {
     return 'text';
   };
 
-  // --- SOCKETS & SYNC ---
   const markRead = () => socket.emit('mark_read', { userId: currentUser.id, otherId: activeUser.id });
 
   useEffect(() => {
@@ -96,7 +95,6 @@ const ChatView = ({ activeUser, currentUser, socket, onBack }) => {
     if(scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [messages, otherTyping]);
 
-  // --- ACTIONS ---
   const handleTypingInput = (e) => {
       setInput(e.target.value);
       if(!isTyping) {
@@ -135,10 +133,8 @@ const ChatView = ({ activeUser, currentUser, socket, onBack }) => {
   };
 
   const handleFileUpload = async (e) => {
-    // Support both Event (from input) and File (from Recorder/Camera)
     const file = (e.target && e.target.files) ? e.target.files[0] : e;
     if(!file) return;
-    
     const formData = new FormData();
     formData.append('file', file);
     
@@ -166,7 +162,6 @@ const ChatView = ({ activeUser, currentUser, socket, onBack }) => {
       if(confirm("Delete this message?")) socket.emit('delete_message', { messageId: msgId });
   };
 
-  // --- RENDER ---
   return (
     <div className="flex flex-col h-full bg-gray-50 dark:bg-gray-900 transition-colors duration-200">
       
@@ -195,24 +190,22 @@ const ChatView = ({ activeUser, currentUser, socket, onBack }) => {
 
             return (
               <div key={i} className={`flex flex-col ${m.isMe ? 'items-end' : 'items-start'} relative group`}>
-                
-                {/* REPLY CONTEXT */}
                 {m.replyTo && (
                     <div className={`text-xs mb-1 px-2 py-1 rounded opacity-70 ${m.isMe ? 'bg-primary/20 text-right' : 'bg-gray-200 dark:bg-gray-700'}`}>
                         Replying to: {m.replyTo.text?.substring(0, 20)}...
                     </div>
                 )}
 
-                {/* MESSAGE BUBBLE */}
                 <div 
                     onDoubleClick={() => setMenuOpenId(m.id)}
                     onContextMenu={(e) => e.preventDefault()}
                     className={`max-w-[75%] px-2 py-2 rounded-lg text-sm shadow-sm relative select-none touch-action-manipulation
                     ${m.isMe ? 'bg-primary text-white' : 'bg-white dark:bg-gray-800 dark:text-white'}`}
                 >
-                    {type === 'image' && <img src={m.fileUrl} className="max-w-[250px] rounded mb-1 cursor-pointer" onClick={() => setViewMedia({url:m.fileUrl, type:'image'})}/>}
-                    {type === 'video' && <video src={m.fileUrl} className="max-w-[250px] rounded mb-1" controls playsInline muted />}
-                    {type === 'audio' && <audio src={m.fileUrl} controls className="w-[250px] h-10 mt-1" />}
+                    {/* FIX: Add onDoubleClick to Media to propagate event */}
+                    {type === 'image' && <img src={m.fileUrl} className="max-w-[250px] rounded mb-1 cursor-pointer" onClick={() => setViewMedia({url:m.fileUrl, type:'image'})} onDoubleClick={() => setMenuOpenId(m.id)} />}
+                    {type === 'video' && <video src={m.fileUrl} className="max-w-[250px] rounded mb-1" controls playsInline muted onDoubleClick={() => setMenuOpenId(m.id)} />}
+                    {type === 'audio' && <audio src={m.fileUrl} controls className="w-[250px] h-10 mt-1" onDoubleClick={() => setMenuOpenId(m.id)} />}
                     
                     {type === 'text' && <p className="leading-relaxed px-1"><Linkify text={m.text} /></p>}
                     
@@ -222,7 +215,6 @@ const ChatView = ({ activeUser, currentUser, socket, onBack }) => {
                       {m.isMe && <span>• {m.status}</span>}
                     </div>
 
-                    {/* REACTIONS BADGE */}
                     {hasReactions && (
                         <div className="absolute -bottom-2 right-0 bg-white dark:bg-gray-700 rounded-full px-1 shadow-md border dark:border-gray-600 flex gap-0.5 text-xs z-10 scale-90">
                             {Object.values(m.reactions).slice(0, 3).map((r, idx) => <span key={idx}>{r}</span>)}
@@ -231,9 +223,9 @@ const ChatView = ({ activeUser, currentUser, socket, onBack }) => {
                     )}
                 </div>
 
-                {/* CONTEXT MENU (Above Message) */}
+                {/* FIX: Smart Menu Position (Left/Right & Above) */}
                 {menuOpenId === m.id && (
-                    <div className="absolute bottom-full mb-2 z-20 bg-white dark:bg-gray-800 rounded-lg shadow-xl border dark:border-gray-700 p-2 flex flex-col gap-2 min-w-[200px] animate-fade-in">
+                    <div className={`absolute bottom-full mb-2 z-50 bg-white dark:bg-gray-800 rounded-lg shadow-xl border dark:border-gray-700 p-2 flex flex-col gap-2 min-w-[200px] animate-fade-in ${m.isMe ? 'right-0' : 'left-0'}`}>
                         <div className="flex flex-wrap gap-1 mb-2 border-b dark:border-gray-600 pb-2">
                             {REACTIONS.map(r => (
                                 <button key={r} onClick={() => handleReaction(m.id, r)} className="hover:scale-125 transition text-lg p-1">{r}</button>
@@ -242,7 +234,7 @@ const ChatView = ({ activeUser, currentUser, socket, onBack }) => {
                         <button onClick={() => { setReplyingTo(m); setMenuOpenId(null); }} className="flex items-center gap-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 p-1 rounded"><Reply size={14}/> Reply</button>
                         {m.isMe && (
                             <>
-                                <button onClick={() => { setEditingId(m.id); setInput(m.text); setMenuOpenId(null); }} className="flex items-center gap-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 p-1 rounded"><Edit2 size={14}/> Edit</button>
+                                {type === 'text' && <button onClick={() => { setEditingId(m.id); setInput(m.text); setMenuOpenId(null); }} className="flex items-center gap-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 p-1 rounded"><Edit2 size={14}/> Edit</button>}
                                 <button onClick={() => handleDelete(m.id)} className="flex items-center gap-2 text-sm text-red-500 hover:bg-red-50 p-1 rounded"><Trash2 size={14}/> Delete</button>
                             </>
                         )}
@@ -254,7 +246,6 @@ const ChatView = ({ activeUser, currentUser, socket, onBack }) => {
          })}
       </div>
 
-      {/* FOOTER */}
       <div className="flex-none bg-white dark:bg-gray-800 p-2 pb-8 flex items-center gap-2 border-t dark:border-gray-700 safe-area-bottom relative transition-colors">
          {replyingTo && (
              <div className="absolute bottom-full left-0 w-full bg-gray-100 dark:bg-gray-700 p-2 border-t dark:border-gray-600 flex justify-between items-center text-xs">

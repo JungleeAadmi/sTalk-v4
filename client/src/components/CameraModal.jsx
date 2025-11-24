@@ -1,6 +1,6 @@
 import React, { useRef, useState, useCallback, useEffect } from 'react';
 import Webcam from 'react-webcam';
-import { X, RotateCcw, Check } from 'lucide-react';
+import { X, RotateCcw, Check, Loader2 } from 'lucide-react';
 
 const CameraModal = ({ onClose, onCapture }) => {
   const webcamRef = useRef(null);
@@ -8,21 +8,18 @@ const CameraModal = ({ onClose, onCapture }) => {
   
   const [imgSrc, setImgSrc] = useState(null);
   const [videoBlob, setVideoBlob] = useState(null);
+  const [processing, setProcessing] = useState(false); // NEW: Prevents multi-click
   
   const [facingMode, setFacingMode] = useState("environment");
-  const [mode, setMode] = useState('photo'); // 'photo' or 'video'
+  const [mode, setMode] = useState('photo'); 
   const [isRecording, setIsRecording] = useState(false);
   const [chunks, setChunks] = useState([]);
   const [timer, setTimer] = useState(0);
 
-  // Timer Logic
   useEffect(() => {
     let interval;
-    if (isRecording) {
-      interval = setInterval(() => setTimer(t => t + 1), 1000);
-    } else {
-      setTimer(0);
-    }
+    if (isRecording) interval = setInterval(() => setTime(t => t + 1), 1000);
+    else setTimer(0);
     return () => clearInterval(interval);
   }, [isRecording]);
 
@@ -33,59 +30,55 @@ const CameraModal = ({ onClose, onCapture }) => {
     }
   }, [webcamRef]);
 
-  // --- SMART VIDEO RECORDING ---
   const startRecording = useCallback(() => {
     setChunks([]);
     setIsRecording(true);
-
     const stream = webcamRef.current.stream;
-    
-    // 1. Detect Best Supported Mime Type
-    const mimeTypes = [
-        "video/webm;codecs=vp8,opus",
-        "video/webm",
-        "video/mp4",
-        "video/mp4;codecs=avc1", // iOS preferred
-    ];
-    let selectedType = mimeTypes.find(type => MediaRecorder.isTypeSupported(type)) || "";
+    const mimeTypes = ["video/webm;codecs=vp8,opus", "video/webm", "video/mp4", "video/mp4;codecs=avc1"];
+    const selectedType = mimeTypes.find(type => MediaRecorder.isTypeSupported(type)) || "";
 
     try {
         mediaRecorderRef.current = new MediaRecorder(stream, { mimeType: selectedType });
-        
         mediaRecorderRef.current.addEventListener("dataavailable", ({ data }) => {
           if (data.size > 0) setChunks((prev) => [...prev, data]);
         });
-        
         mediaRecorderRef.current.start();
     } catch (err) {
-        console.error("Recorder Error:", err);
-        alert("Camera recording not supported on this browser.");
+        console.error(err);
         setIsRecording(false);
     }
   }, [webcamRef]);
 
   const stopRecording = useCallback(() => {
     if(!mediaRecorderRef.current) return;
-    
     mediaRecorderRef.current.stop();
     setIsRecording(false);
-    
     mediaRecorderRef.current.addEventListener("stop", () => {
-       const blob = new Blob(chunks, { type: "video/mp4" }); // Container type
+       const blob = new Blob(chunks, { type: "video/mp4" });
        setVideoBlob(URL.createObjectURL(blob));
     });
   }, [chunks]);
 
+  // FIX: Handle confirm with loading state
   const handleConfirm = async () => {
-    if (mode === 'photo' && imgSrc) {
-      const res = await fetch(imgSrc);
-      const blob = await res.blob();
-      const file = new File([blob], `photo-${Date.now()}.jpg`, { type: "image/jpeg" });
-      onCapture(file);
-    } else if (mode === 'video' && chunks.length > 0) {
-      const blob = new Blob(chunks, { type: "video/mp4" });
-      const file = new File([blob], `video-${Date.now()}.mp4`, { type: "video/mp4" });
-      onCapture(file);
+    if (processing) return; // Prevent double send
+    setProcessing(true);
+
+    try {
+      if (mode === 'photo' && imgSrc) {
+        const res = await fetch(imgSrc);
+        const blob = await res.blob();
+        const file = new File([blob], `photo-${Date.now()}.jpg`, { type: "image/jpeg" });
+        onCapture(file);
+      } else if (mode === 'video' && chunks.length > 0) {
+        const blob = new Blob(chunks, { type: "video/mp4" });
+        const file = new File([blob], `video-${Date.now()}.mp4`, { type: "video/mp4" });
+        onCapture(file);
+      }
+      // Parent will unmount this component, so no need to setProcessing(false)
+    } catch (e) {
+      console.error(e);
+      setProcessing(false);
     }
   };
 
@@ -103,19 +96,17 @@ const CameraModal = ({ onClose, onCapture }) => {
 
   return (
     <div className="fixed inset-0 z-[80] bg-black flex flex-col animate-fade-in">
-      {/* Top Bar */}
       <div className="flex justify-between p-4 text-white bg-gradient-to-b from-black/80 to-transparent z-10 absolute top-0 w-full safe-area-top">
-        <button onClick={onClose}><X size={28} /></button>
+        <button onClick={onClose} disabled={processing}><X size={28} /></button>
         
         <div className="flex gap-4 bg-black/40 rounded-full p-1 backdrop-blur-md">
             <button onClick={() => setMode('photo')} className={`px-4 py-1 rounded-full text-sm font-bold transition-all ${mode==='photo' ? 'bg-white text-black' : 'text-white'}`}>Photo</button>
             <button onClick={() => setMode('video')} className={`px-4 py-1 rounded-full text-sm font-bold transition-all ${mode==='video' ? 'bg-red-600 text-white' : 'text-white'}`}>Video</button>
         </div>
 
-        <button onClick={() => setFacingMode(prev => prev==="user"?"environment":"user")}><RotateCcw size={28} /></button>
+        <button onClick={() => setFacingMode(prev => prev==="user"?"environment":"user")} disabled={processing}><RotateCcw size={28} /></button>
       </div>
 
-      {/* Viewfinder */}
       <div className="flex-1 bg-black relative flex items-center justify-center overflow-hidden">
         {imgSrc ? (
            <img src={imgSrc} className="w-full h-full object-contain" />
@@ -125,15 +116,11 @@ const CameraModal = ({ onClose, onCapture }) => {
            <>
              <Webcam
                audio={true}
-               muted={true} // IMPORTANT: Mute preview to prevent echo glitch
+               muted={true}
                ref={webcamRef}
                screenshotFormat="image/jpeg"
                forceScreenshotSourceSize={true} 
-               videoConstraints={{ 
-                  facingMode: facingMode,
-                  width: { ideal: 1920 }, // 1080p is safer for mobile recording performance than 4K
-                  height: { ideal: 1080 } 
-               }}
+               videoConstraints={{ facingMode, width: { ideal: 1920 }, height: { ideal: 1080 } }}
                className="w-full h-full object-cover"
              />
              {isRecording && (
@@ -145,12 +132,13 @@ const CameraModal = ({ onClose, onCapture }) => {
         )}
       </div>
 
-      {/* Controls */}
       <div className="p-8 bg-black flex justify-center items-center gap-10 safe-area-bottom min-h-[140px]">
         {(imgSrc || videoBlob) ? (
            <>
-             <button onClick={retake} className="px-6 py-3 rounded-full bg-gray-800 text-white font-bold">Retake</button>
-             <button onClick={handleConfirm} className="p-4 rounded-full bg-blue-600 text-white shadow-lg shadow-blue-900/50"><Check size={32} /></button>
+             <button onClick={retake} disabled={processing} className="px-6 py-3 rounded-full bg-gray-800 text-white font-bold">Retake</button>
+             <button onClick={handleConfirm} disabled={processing} className="p-4 rounded-full bg-blue-600 text-white shadow-lg flex items-center justify-center">
+                {processing ? <Loader2 className="animate-spin" size={32} /> : <Check size={32} />}
+             </button>
            </>
         ) : (
            <>
