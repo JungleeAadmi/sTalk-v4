@@ -114,7 +114,7 @@ function App() {
       <div className={`w-full md:w-[380px] flex flex-col border-r border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 transition-all ${selectedChatId ? 'hidden md:flex' : 'flex'}`}>
         <div className="h-16 px-4 flex items-center justify-between bg-gray-50 dark:bg-gray-800 border-b dark:border-gray-700">
           <div className="flex items-center gap-2">
-             <img src="/logo.svg" className="w-8 h-8" alt="Logo" />
+             <img src="/logo.svg" className="w-8 h-32" alt="Logo" />
              <h1 className="text-2xl font-bold text-primary font-sans">sTalk</h1>
           </div>
           <button onClick={() => setShowSettings(true)} className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 transition"><SettingsIcon className="text-gray-600 dark:text-gray-300" /></button>
