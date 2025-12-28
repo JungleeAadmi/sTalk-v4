@@ -113,7 +113,7 @@ function App() {
     >
       <div className={`w-full md:w-[380px] flex flex-col border-r border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 transition-all ${selectedChatId ? 'hidden md:flex' : 'flex'}`}>
         <div
-  className="h-16 px-4 flex items-center justify-between bg-gray-50 dark:bg-gray-800 border-b dark:border-gray-700"
+  className="h-32 px-4 flex items-center justify-between bg-gray-50 dark:bg-gray-800 border-b dark:border-gray-700"
   style={{ paddingTop: 'env(safe-area-inset-top)' }}
 >
           <div className="flex items-center gap-2">
