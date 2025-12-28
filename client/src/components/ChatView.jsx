@@ -185,10 +185,10 @@ const ChatView = ({ activeUser, currentUser, socket, onBack }) => {
   };
 
   return (
-    <div className="flex flex-col h-16 bg-gray-50 dark:bg-gray-900 transition-colors duration-200">
+    <div className="flex flex-col h-full bg-gray-50 dark:bg-gray-900 transition-colors duration-200">
       
       {/* HEADER */}
-      <div className="flex-none h-16 bg-white dark:bg-gray-800 px-4 flex items-center gap-3 shadow-sm z-10 border-b dark:border-gray-700 transition-colors safe-area-top sticky top-0">
+      <div className="flex-none h-32 bg-white dark:bg-gray-800 px-4 flex items-center gap-3 shadow-sm z-10 border-b dark:border-gray-700 transition-colors safe-area-top sticky top-0">
         <button onClick={onBack} className="md:hidden text-gray-600 dark:text-gray-300"><ArrowLeft /></button>
         <div onClick={() => setViewMedia({ url: activeUser.avatar, type: 'image' })} className="cursor-pointer">
             <Avatar user={activeUser} />
