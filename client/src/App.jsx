@@ -150,7 +150,7 @@ function App() {
       <div className={`flex-1 relative ${!selectedChatId ? 'hidden md:flex' : 'flex flex-col'}`}>
         {selectedChatId ? <ChatView activeUser={activeUser} currentUser={user} socket={socket} onBack={() => setSelectedChatId(null)} /> : (
            <div className="flex-1 flex flex-col items-center justify-center text-gray-500 gap-4 bg-gray-50 dark:bg-gray-900">
-              <img src="/logo.svg" className="w-32 h-32 opacity-10 grayscale" />
+              <img src="/logo.svg" className="w-32 h-16 opacity-10 grayscale" />
               <p className="text-lg font-medium">Select a user to start chatting</p>
            </div>
         )}
